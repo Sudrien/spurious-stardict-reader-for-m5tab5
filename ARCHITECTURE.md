@@ -107,3 +107,12 @@
   `spurious_`; the app's two inflate calls `jal spurious_tinfl_decompress`
   and nothing calls the ROM addresses (objdump). Host tests pass; built on
   IDF v6.1; not yet rerun on the Tab5.
+- **0012 Quiet the empty-slot probe.** 0011 on the Tab5 works: after the
+  card went in, `tab5_storage: microSD mounted at /sd`, then `spurious:
+  wiktionary_en-simple_all_nopic_2026-10: 54189 words, 475 synonyms (out
+  of order: sorted), opened in 980 ms`. Before it, every second with no
+  card logged `sdmmc_common: sdmmc_init_ocr: send_op_cond (1) returned
+  0x107` and two `vfs_fat_sdmmc` errors (and idf.py monitor its HINT
+  lines). Those two tags are now silent and SD_HOST warnings-only, set in
+  app_main before storage starts (CONFIG_LOG_DYNAMIC_LEVEL_CONTROL is on
+  by default). Built on IDF v6.1; not yet rerun on the Tab5.

@@ -430,6 +430,13 @@ void app_main(void)
     /* As Duplicitous: the USB host before storage, which registers mass
      * storage as a class with it; then the port, which powers USB-A. */
     ESP_ERROR_CHECK(usbhost_init(tab5io_exp2()));
+    /* storage polls the slot every second, and each poll with no card
+     * logs three errors from IDF's sdmmc and FAT layers and a line from
+     * SD_HOST. tab5_storage logs the mount when there is one; that says
+     * enough. */
+    esp_log_level_set("sdmmc_common", ESP_LOG_NONE);
+    esp_log_level_set("vfs_fat_sdmmc", ESP_LOG_NONE);
+    esp_log_level_set("SD_HOST", ESP_LOG_WARN);
     storage_io_init();
     static const storage_usb_t usb = {
         .register_class = usbhost_register_class,
