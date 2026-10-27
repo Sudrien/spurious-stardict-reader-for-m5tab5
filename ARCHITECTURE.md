@@ -116,3 +116,7 @@
   lines). Those two tags are now silent and SD_HOST warnings-only, set in
   app_main before storage starts (CONFIG_LOG_DYNAMIC_LEVEL_CONTROL is on
   by default). Built on IDF v6.1; not yet rerun on the Tab5.
+- **0013 A build banner on the console.** app_main's first line is
+  `spurious: === Spurious <version>, built <date> <time>, ESP-IDF <ver> ===`,
+  from esp_app_get_description(): the version is CI's version.txt (the tag
+  or ref), else git describe. Built on IDF v6.1; not yet run on the Tab5.

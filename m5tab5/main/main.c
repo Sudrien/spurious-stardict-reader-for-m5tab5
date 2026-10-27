@@ -20,6 +20,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -411,6 +412,12 @@ static void search(sd_dict_t *d, storage_id_t vol)
 
 void app_main(void)
 {
+    /* Which build this is: the version is the tag or ref CI wrote to
+     * version.txt, else git describe. */
+    const esp_app_desc_t *app = esp_app_get_description();
+    ESP_LOGI(TAG, "=== Spurious %s, built %s %s, ESP-IDF %s ===",
+             app->version, app->date, app->time, app->idf_ver);
+
     esp_err_t e = nvs_flash_init();
     if (e == ESP_ERR_NVS_NO_FREE_PAGES || e == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         nvs_flash_erase();
