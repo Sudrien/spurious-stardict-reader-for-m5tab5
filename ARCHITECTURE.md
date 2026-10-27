@@ -24,3 +24,9 @@
   pyGlossary write, and timings. `--quiet` leaves only the final summary.
   Checked on the small test ZIM only; the rate and ETA are untested at
   real-dump scale.
+- **0005 Fix the apt route in tools/zim2stardict.py's docstring.** 0003
+  implied a Debian package for python-idzip; there is none. The apt line
+  now adds `python3-lxml dictzip`, and python-idzip is marked pip-only.
+  Checked on Ubuntu 24.04: `dictzip` is in the archive, and with
+  python-idzip uninstalled the script wrote a `.dict.dz` that
+  `dictzip -d -c` read back.

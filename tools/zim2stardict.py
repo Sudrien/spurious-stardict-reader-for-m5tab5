@@ -3,11 +3,12 @@
 
     pip install -r tools/requirements.txt
     # or, on Debian/Ubuntu:
-    sudo apt install python3-bs4 python3-libzim python3-pyglossary
+    sudo apt install python3-bs4 python3-libzim python3-pyglossary python3-lxml dictzip
     tools/zim2stardict.py wiktionary_en_all_nopic_2026-09.zim out/ --lang English
 
-The script parses with lxml (python3-lxml), and .dict.dz needs python-idzip
-or the dictzip utility on PATH; pass --no-dictzip to skip compression.
+The script parses with lxml. Compressing .dict.dz needs either python-idzip
+(pip only, there is no Debian package) or the dictzip utility on PATH (the
+apt route above); pass --no-dictzip to skip compression.
 
 Writes out/<name>/<name>.{ifo,idx,dict[.dz],syn}.
 
