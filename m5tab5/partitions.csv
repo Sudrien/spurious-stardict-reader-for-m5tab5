@@ -1,0 +1,11 @@
+# The same table as duplicitous-for-m5tab5: factory, app2 (ota_0), and the
+# Tab5 projects' app3M_fat9M_16MB ffat and coredump at their offsets.
+# Standalone, this app is factory; installed by Duplicitous, it is app2.
+#
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,      0x9000,   0x5000,
+otadata,  data, ota,      0xe000,   0x2000,
+launcher, app,  factory,  0x10000,  0x200000,
+app2,     app,  ota_0,    0x210000, 0x400000,
+ffat,     data, fat,      0x610000, 0x9E0000,
+coredump, data, coredump, 0xFF0000, 0x10000,

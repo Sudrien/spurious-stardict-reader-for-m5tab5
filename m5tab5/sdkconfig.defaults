@@ -1,0 +1,46 @@
+# Deltas from the ESP32-P4 defaults; the board ones are duplicitous-for-
+# m5tab5's, less its launcher's app rollback.
+
+CONFIG_IDF_TARGET="esp32p4"
+
+# Tab5 silicon is ESP32-P4 rev v1.3; without this the build targets v3.1+
+# and esptool refuses to flash.
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# Console and logs on the USB-C port.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# The framebuffer (gfx's 1.8 MB shadow) and the .idx live in PSRAM.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_SPEED_200M=y
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+
+# Keeps the bootloader under 0x6000, so the table stays at 0x8000.
+CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y
+
+# Duplicitous's table: this app is its own factory app when flashed
+# standalone, and fits app2 when Duplicitous installs it.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Long, UTF-8 file names on the card.
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+CONFIG_FATFS_API_ENCODING_UTF_8=y
+
+# Two volumes, the card and a USB drive.
+CONFIG_FATFS_VOLUME_COUNT=2
+
+# USB host, as Duplicitous has it: drives behind a hub, the enumeration
+# filter feckless_drivers' usbhost.c hooks, and the host's DMA buffers
+# allowed in PSRAM.
+CONFIG_USB_HOST_HUBS_SUPPORTED=y
+CONFIG_USB_HOST_HUB_MULTI_LEVEL=y
+CONFIG_USB_HOST_ENABLE_ENUM_FILTER_CALLBACK=y
+CONFIG_USB_HOST_DWC_DMA_CAP_MEMORY_IN_PSRAM=y
+CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=1024
+
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192

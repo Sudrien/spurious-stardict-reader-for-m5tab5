@@ -1,0 +1,160 @@
+# SPDX-License-Identifier: MIT
+name: Build the M5Stack Tab5 firmware
+
+# duplicitous-for-m5tab5's m5tab5.yml with the names changed: a tag
+# builds and releases; a manual run builds any ref, with a choice of
+# ESP-IDF, and releases only when asked. The firmware is in m5tab5/, so
+# every IDF step runs from there. Each release carries the standalone
+# image, the app-only image and their SHA-256s.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: 'Git tag, branch, or commit to build (e.g. v0.1.0)'
+        required: true
+        default: 'main'
+        type: string
+      idf_version:
+        description: 'ESP-IDF to build with'
+        required: false
+        default: 'v6.1'
+        type: choice
+        options:
+          - v6.1
+          - v5.5.5
+      release:
+        description: 'Also publish a GitHub release with these binaries'
+        required: false
+        default: false
+        type: boolean
+
+# Needed to create a release; the default token may be read-only.
+permissions:
+  contents: write
+  # Build provenance: id-token gets the short-lived certificate the
+  # attestation is signed with; attestations stores it against this
+  # repository.
+  id-token: write
+  attestations: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: m5tab5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.ref }}
+
+      # A manual run with "release" ticked must name a tag that exists.
+      # Otherwise the release step would create one: action-gh-release
+      # makes a missing tag on the default branch's newest commit, not on
+      # what was built, so the binaries would be published under a tag
+      # for some other tree. Checked first, before an IDF install and a
+      # build are spent on it.
+      - name: Check that a release is of a tag
+        if: github.event_name == 'workflow_dispatch' && inputs.release
+        env:
+          GIT_REF: ${{ github.event.inputs.git_ref }}
+        run: |
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$GIT_REF" > /dev/null; then
+            echo "::error::'$GIT_REF' is not a tag; a release can only be made from a tag"
+            exit 1
+          fi
+
+      # github.ref_name is the branch on a workflow_dispatch, not what was
+      # checked out; the input names the build when there is one. The
+      # input comes in through the environment, never pasted into the
+      # script, and a / (feature/x) becomes - so it can be a file name.
+      - name: Work out the version string
+        id: ver
+        env:
+          REF_NAME: ${{ github.event.inputs.git_ref || github.ref_name }}
+        run: |
+          echo "ref=$REF_NAME" >> "$GITHUB_OUTPUT"
+          echo "name=${REF_NAME//\//-}" >> "$GITHUB_OUTPUT"
+
+      - name: Install ESP-IDF
+        uses: espressif/install-esp-idf-action@v1
+        with:
+          version: ${{ github.event.inputs.idf_version || 'v6.1' }}
+          target: 'esp32p4'
+
+      - name: Build and Merge Binaries
+        env:
+          NAME: ${{ steps.ver.outputs.name }}
+        run: |
+          # the release string into esp_app_desc_t.version, so the banner
+          # in the console log says which build this is
+          echo "$NAME" > version.txt
+          idf.py set-target esp32p4
+          idf.py build
+          idf.py merge-bin
+          mv build/merged-binary.bin "build/spurious_${NAME}_m5tab5_standalone.bin"
+          mv build/spurious.bin "build/spurious_${NAME}_m5tab5.bin"
+          # the checksums, published with the binaries
+          (cd build && sha256sum "spurious_${NAME}_m5tab5_standalone.bin" \
+                                 "spurious_${NAME}_m5tab5.bin" > "spurious_${NAME}_m5tab5.sha256")
+          cat "build/spurious_${NAME}_m5tab5.sha256"
+
+      # A signed record that these two files, by their SHA-256, were
+      # built by this workflow from this commit. It is stored with the
+      # repository, not in the files: the .bins are byte for byte what
+      # they were and flash as before. Every run attests, not only a
+      # release, so a downloaded artifact can be checked too:
+      #   gh attestation verify <file> --repo Sudrien/spurious-stardict-reader-for-m5tab5
+      # A uses: step does not take the run steps' working-directory, so
+      # the paths start at m5tab5/, as the archive step's do.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5_standalone.bin
+            m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.bin
+
+      - name: Archive build output artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: spurious_m5tab5-${{ steps.ver.outputs.name }}
+          path: |
+            m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5_standalone.bin
+            m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.bin
+            m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.sha256
+
+      # The lock the component manager resolved, to be read and
+      # committed until one is.
+      - name: Archive the dependency lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependencies.lock-${{ steps.ver.outputs.name }}
+          path: m5tab5/dependencies.lock
+          if-no-files-found: ignore
+
+      # Pushing a tag releases; a manual run only with the box ticked,
+      # and only against a tag, which the check at the top has made sure
+      # of. Asked by event, not by github.ref: a manual run started from
+      # a tag in the Actions menu has a tag for github.ref whatever it
+      # builds. The only push this workflow takes is a tag's. tag_name
+      # is the ref as given, not the file-name form of it, so the
+      # release lands on the tag that was built.
+      - name: Publish release
+        if: github.event_name == 'push' || inputs.release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.ref }}
+          name: ${{ steps.ver.outputs.ref }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5_standalone.bin
+            m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.bin
+            m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.sha256

@@ -52,3 +52,19 @@
   `.dict.dz` 3.1 MB (was 4.2 MB). `cat` and `!` read as intended; not yet
   seen on a Tab5. The "without English section" count is no longer
   printed under `--whole-page`.
+- **0008 Start m5tab5/: a reader on Duplicitous's base.** The build setup
+  is duplicitous-for-m5tab5's at 291f83a -- exFAT vendoring, its patched
+  usb_host_msc, partition table, `main/idf_component.yml` and
+  `dependencies.lock` (copied unchanged, so the lock still matches),
+  sdkconfig less the launcher's app rollback, and the CI workflow
+  renamed. New: `main/stardict.c` (.ifo, .idx in PSRAM, .dict or
+  dictzip'd .dict.dz through miniz 3.0.2's tinfl, vendored as
+  `components/tinfl` since the P4's ROM has none; HTML reduced to text),
+  and `main/main.c` (find dictionaries under `/dict` on card or drive,
+  keyboard search over the .idx, paged definitions). Host test
+  `test/stardict` on the Simple English dictionary in `out/`: every one
+  of 54189 definitions read through dictzip, ASan/UBSan clean. Built on
+  IDF v6.1 with `IDF_COMPONENT_MANAGER=0` and scratch components (see
+  CLAUDE.md): no warnings, `spurious.bin binary size 0xe5db0 bytes ...
+  (55%) free` of the 2 MB factory slot. Not built with the component
+  manager, not on IDF 5.5, not run on a Tab5.

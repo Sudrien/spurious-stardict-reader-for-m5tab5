@@ -1,0 +1,11 @@
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+*_standalone.bin
+
+# written by tools/enable_exfat.sh at configure time
+components/fatfs/
+# written by the CI build step
+version.txt
+test/stardict/lookup
