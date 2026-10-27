@@ -93,3 +93,17 @@
   output, and inflates in one call. Deepest frames in the firmware build
   (`-fstack-usage`): sd_open 864, define 672, scan 624 bytes. Host tests
   as for 0009 pass; built on IDF v6.1; not yet rerun on the Tab5.
+- **0011 Keep the vendored inflater's symbols away from the P4's ROM.**
+  0010 on the Tab5: the card mounted, then `Guru Meditation Error: Core 0
+  panic'ed (Store access fault)` in `tlsf_free`, from `free()` in
+  `slurp()` opening the `.syn.dz`; a corrupted heap header read `'d r`, the
+  first synonym's text. The P4 before rev 3 links
+  `esp32p4.rom.eco0_4.ld`, which defines `tinfl_decompress` and its
+  siblings at ROM addresses, and those beat `components/tinfl`'s at link
+  time (`nm`: `4fc000f8 A tinfl_decompress`). So the ROM's older inflater
+  ran against this miniz's `tinfl_decompressor`, a different struct, and
+  wrote past it -- and 0009's crash, PC in ROM, was the same call, not only
+  the stack. `miniz_export.h` now prefixes every exported name with
+  `spurious_`; the app's two inflate calls `jal spurious_tinfl_decompress`
+  and nothing calls the ROM addresses (objdump). Host tests pass; built on
+  IDF v6.1; not yet rerun on the Tab5.
