@@ -9,3 +9,5 @@ components/fatfs/
 # written by the CI build step
 version.txt
 test/stardict/lookup
+test/stardict/dmeta_dump
+__pycache__/

@@ -13,12 +13,22 @@ inside that one. `tools/zim2stardict.py` writes them that way:
 
 At power-on it opens the only dictionary it finds, or lists them. Type
 on the keyboard and the list shows the headwords from there on, those
-that start with what you typed highlighted. *Up* and *Down* page the
-list. Tap a word for its definition, *Up* and *Down* to page it, *Back* to
+that start with what you typed highlighted; a synonym from the `.syn`
+shows the headword it leads to after it. *Up* and *Down* page the list.
+Tap a word for its definition, *Up* and *Down* to page it, *Back* to
 return. Pulling the card closes the dictionary and goes back to looking.
 
-The `.idx` is read into PSRAM whole: about 1 MB for Simple English
-Wiktionary. A `.idx.gz` and the `.syn` synonym file are not read yet.
+*sounds* switches the list to the words that sound like what was typed
+-- "fonetik" finds phonetic, "definately" definitely -- nearest spelling
+first. It uses Double Metaphone keys, worked out for every word the
+first time it is used (a progress bar; 55 ms for Simple English on a
+PC, more on the Tab5), and kept while the dictionary is open.
+
+The `.idx`, and the `.syn` or `.syn.dz`, are read into PSRAM whole:
+about 1 MB for Simple English Wiktionary, plus 8 bytes a word once
+*sounds* has been used. A `.idx.gz` is not read. If the files are not in
+StarDict's order -- pyGlossary has written some that are not quite -- the
+list is sorted when the dictionary opens.
 
 ## Building
 
@@ -44,13 +54,15 @@ all pinned in `main/idf_component.yml`. exFAT is built in as there:
 `cmake/exfat.cmake` runs `tools/enable_exfat.sh` at configure time; set
 `TAB5_NO_EXFAT` in the environment to build FAT32 only.
 
-`main/stardict.c` is plain C over stdio. `test/stardict` builds it on a
-host:
+`main/stardict.c` and `main/dmeta.c` are plain C. `test/stardict` builds
+them on a host:
 
     make -C test/stardict
-    test/stardict/lookup ../out/<name>/<name>.ifo cat
+    test/stardict/lookup ../out/<name>/<name>.ifo cat '~fonetik'
 
-With only the `.ifo` it reads every definition once.
+With only the `.ifo` it reads every definition once and checks the rows'
+order. `test/stardict/dmeta_check.py <.idx>` compares `dmeta.c` with the
+Python Metaphone package over every headword (`pip install metaphone`).
 
 ## Licences other than MIT
 

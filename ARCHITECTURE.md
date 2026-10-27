@@ -68,3 +68,17 @@
   CLAUDE.md): no warnings, `spurious.bin binary size 0xe5db0 bytes ...
   (55%) free` of the 2 MB factory slot. Not built with the component
   manager, not on IDF 5.5, not run on a Tab5.
+- **0009 Synonyms and a sounds-like search.** `main/stardict.c` reads the
+  `.syn` or `.syn.dz` and merges it with the `.idx` into rows; a synonym
+  row shows and opens its headword. `out/`'s `.idx` turned out not to be in
+  StarDict's order (115 inversions, `AKA` before `Aaqib`), which breaks a
+  binary search, so the rows are checked and sorted at open when they are
+  not. `main/dmeta.c` is Double Metaphone written from Philips' reference;
+  `sd_sounds_like()` keys every row on first use and ranks rows sharing a
+  key by edit distance. The search screen's *sounds* key switches to it.
+  Host: `54189 words, 475 synonyms, 54664 rows (files out of order: sorted
+  at open)`, every definition read, rows in order, keys for all rows in
+  55 ms; `dmeta_check.py` against Metaphone 0.6: `53806 agree, 383 differ
+  in a known place, 0 otherwise`. Built on IDF v6.1 as 0008 was, no
+  warnings, `0xe8900 bytes ... (55%) free`. Not run on a Tab5; 0008 has
+  not been either.

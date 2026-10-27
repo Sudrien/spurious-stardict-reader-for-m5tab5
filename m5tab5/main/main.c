@@ -4,8 +4,10 @@
  * Finds dictionaries (.ifo with its .idx and .dict or .dict.dz) under
  * /dict on the microSD card or a USB drive, one level of folders deep,
  * as tools/zim2stardict.py writes them. With one, it opens; with more,
- * a list. Then: type on the keyboard, the list shows the headwords from
- * there on, tap one for its definition.
+ * a list. Then: type on the keyboard, the list shows the headwords (and
+ * the .syn's synonyms) from there on, tap one for its definition. With
+ * "sounds" on, the list is instead the words that sound like what was
+ * typed (Double Metaphone, main/dmeta.c).
  *
  * The board bring-up is Duplicitous's (duplicitous-for-m5tab5): the
  * feckless components for the panel, touch, USB host and storage.
@@ -63,6 +65,7 @@ static const char *TAG = "spurious";
 #define C_HIT       RGB(255, 210, 120)
 #define C_RULE      RGB(44, 48, 60)
 #define C_KEY       RGB(52, 58, 76)
+#define C_HIT_KEY   RGB(120, 96, 40)
 #define C_BAD       RGB(220, 90, 80)
 
 /* ---- touch, polled ------------------------------------------------------ */
@@ -265,21 +268,28 @@ static const char *const kb[3][10] = {
     { "z", "x", "c", "v", "b", "n", "m", "-", ".", "del" },
 };
 
-static void draw_search(sd_dict_t *d, const char *q, uint32_t from)
+#define MAX_HITS    (4 * ROWS)
+
+/* One row of the list: the word, and for a synonym the headword it
+ * leads to, dimmed after it. */
+static void draw_row(sd_dict_t *d, uint32_t r, int y, uint16_t c)
 {
-    gfx_fill_rect(0, 0, W, H, C_BG);
-    char big[80];
-    snprintf(big, sizeof big, "%s_", q);
-    header(sd_name(d), big);
-    for (int r = 0; r < ROWS; r++) {
-        uint32_t i = from + (uint32_t)r;
-        if (i >= sd_count(d)) break;
-        int y = HEAD_H + r * ROW_H;
-        const char *w = sd_word(d, i);
-        gfx_draw_text(PAD, y + (ROW_H - TEXT_H) / 2, w, SCALE, W - 2 * PAD,
-                      q[0] && sd_has_prefix(w, q) ? C_HIT : C_TEXT);
-        gfx_fill_rect(0, y + ROW_H - 2, W, 2, C_RULE);
+    const char *w = sd_row_word(d, r);
+    int ty = y + (ROW_H - TEXT_H) / 2;
+    gfx_draw_text(PAD, ty, w, SCALE, W - 2 * PAD, c);
+    if (sd_row_is_syn(d, r)) {
+        int x = PAD + gfx_text_w(w, SCALE) + GFX_GLYPH_W(SCALE);
+        if (x < W - PAD - 4 * GFX_GLYPH_W(SCALE)) {
+            char see[96];
+            snprintf(see, sizeof see, "(%s)", sd_word(d, sd_row_entry(d, r)));
+            gfx_draw_text(x, ty, see, SCALE, W - PAD - x, C_DIM);
+        }
     }
+    gfx_fill_rect(0, y + ROW_H - 2, W, 2, C_RULE);
+}
+
+static void draw_keyboard(bool sounds)
+{
     int kw = W / 10;
     for (int r = 0; r < 3; r++)
         for (int c = 0; c < 10; c++)
@@ -287,42 +297,112 @@ static void draw_search(sd_dict_t *d, const char *q, uint32_t from)
     int y = KB_Y + 3 * KEY_H;
     key(0, y, 2 * kw, KEY_H, "Up", C_KEY);
     key(2 * kw, y, 2 * kw, KEY_H, "Down", C_KEY);
-    key(4 * kw, y, 4 * kw, KEY_H, "space", C_KEY);
+    key(4 * kw, y, 2 * kw, KEY_H, "space", C_KEY);
+    key(6 * kw, y, 2 * kw, KEY_H, "sounds", sounds ? C_HIT_KEY : C_KEY);
     key(8 * kw, y, W - 8 * kw, KEY_H, "clear", C_KEY);
-    show();
 }
 
-/* Until the dictionary's volume goes away. */
+/* sd_sounds_like()'s first call works out every row's keys: say so. */
+static void keys_progress(uint32_t done, uint32_t total)
+{
+    gfx_fill_rect(0, HEAD_H, W, KB_Y - HEAD_H, C_BG);
+    gfx_draw_text(PAD, HEAD_H + 40, "Working out how words sound", DSCALE, W - 2 * PAD, C_DIM);
+    gfx_fill_rect(PAD, HEAD_H + 100, W - 2 * PAD, 30, C_KEY);
+    gfx_fill_rect(PAD, HEAD_H + 100, (int)((int64_t)(W - 2 * PAD) * done / (total ? total : 1)), 30, C_HIT);
+    gfx_blit(HEAD_H, KB_Y);
+}
+
+/* Until the dictionary's volume goes away. Two lists: the rows from what
+ * was typed on (prefix matches highlighted), or with "sounds" on, the
+ * rows that sound like it, nearest spelling first. */
 static void search(sd_dict_t *d, storage_id_t vol)
 {
     char q[64] = "";
     int32_t scroll = 0;
+    bool sounds = false;
+    static uint32_t hits[MAX_HITS];
+    int nhits = 0;
+    bool stale = true;          /* hits are not for q */
     for (;;) {
-        int64_t from = (int64_t)sd_lower_bound(d, q) + scroll;
-        if (from < 0) { scroll -= (int32_t)from; from = 0; }
-        if (from >= sd_count(d)) {
-            from = sd_count(d) > ROWS ? sd_count(d) - ROWS : 0;
-            scroll = (int32_t)(from - sd_lower_bound(d, q));
+        char big[96];
+        uint32_t from = 0;
+        gfx_fill_rect(0, 0, W, H, C_BG);
+        if (sounds) {
+            snprintf(big, sizeof big, "~%s_", q);
+            header(sd_name(d), big);
+            if (stale) {
+                nhits = q[0] ? sd_sounds_like(d, q, hits, MAX_HITS, keys_progress) : 0;
+                if (nhits < 0) {
+                    message("Not enough memory", "There is not enough memory for the sounds-like keys "
+                            "of a dictionary this size.", C_BAD);
+                    vTaskDelay(pdMS_TO_TICKS(3000));
+                    sounds = false;
+                    nhits = 0;
+                    continue;
+                }
+                stale = false;
+                gfx_fill_rect(0, HEAD_H, W, KB_Y - HEAD_H, C_BG);
+            }
+            if (scroll < 0) scroll = 0;
+            if (scroll >= nhits) scroll = nhits > ROWS ? (nhits - 1) / ROWS * ROWS : 0;
+            for (int r = 0; r < ROWS && scroll + r < nhits; r++)
+                draw_row(d, hits[scroll + r], HEAD_H + r * ROW_H, C_TEXT);
+            if (q[0] && !nhits)
+                gfx_draw_text(PAD, HEAD_H + 30, "Nothing sounds like that.", DSCALE, W - 2 * PAD, C_DIM);
+        } else {
+            snprintf(big, sizeof big, "%s_", q);
+            header(sd_name(d), big);
+            int64_t f = (int64_t)sd_lower_bound(d, q) + scroll;
+            if (f < 0) { scroll -= (int32_t)f; f = 0; }
+            if (f >= sd_rows(d)) {
+                f = sd_rows(d) > ROWS ? sd_rows(d) - ROWS : 0;
+                scroll = (int32_t)(f - sd_lower_bound(d, q));
+            }
+            from = (uint32_t)f;
+            for (int r = 0; r < ROWS && from + r < sd_rows(d); r++) {
+                uint32_t i = from + (uint32_t)r;
+                draw_row(d, i, HEAD_H + r * ROW_H,
+                         q[0] && sd_has_prefix(sd_row_word(d, i), q) ? C_HIT : C_TEXT);
+            }
         }
-        draw_search(d, q, (uint32_t)from);
+        draw_keyboard(sounds);
+        show();
+
         int x, y;
         while (!wait_tap(&x, &y, 250))
             if (!storage_present(vol)) return;
         size_t l = strlen(q);
         int kw = W / 10;
         if (y >= HEAD_H && y < KB_Y) {
-            uint32_t i = (uint32_t)from + (uint32_t)((y - HEAD_H) / ROW_H);
-            if ((y - HEAD_H) / ROW_H < ROWS && i < sd_count(d) && !define(d, i, vol)) return;
+            int r = (y - HEAD_H) / ROW_H;
+            if (r >= ROWS) continue;
+            if (sounds) {
+                if (scroll + r < nhits && !define(d, sd_row_entry(d, hits[scroll + r]), vol)) return;
+            } else if (from + (uint32_t)r < sd_rows(d)) {
+                if (!define(d, sd_row_entry(d, from + (uint32_t)r), vol)) return;
+            }
         } else if (y >= KB_Y && y < KB_Y + 3 * KEY_H) {
             const char *k = kb[(y - KB_Y) / KEY_H][x / kw < 10 ? x / kw : 9];
             if (!strcmp(k, "del")) { if (l) q[l - 1] = 0; }
             else if (l + 1 < sizeof q) { q[l] = k[0]; q[l + 1] = 0; }
             scroll = 0;
+            stale = true;
         } else if (y >= KB_Y + 3 * KEY_H) {
             if (x < 2 * kw) scroll -= ROWS;
             else if (x < 4 * kw) scroll += ROWS;
-            else if (x < 8 * kw) { if (l && l + 1 < sizeof q && q[l - 1] != ' ') { q[l] = ' '; q[l + 1] = 0; } scroll = 0; }
-            else { q[0] = 0; scroll = 0; }
+            else if (x < 6 * kw) {
+                if (l && l + 1 < sizeof q && q[l - 1] != ' ') { q[l] = ' '; q[l + 1] = 0; }
+                scroll = 0;
+                stale = true;
+            } else if (x < 8 * kw) {
+                sounds = !sounds;
+                scroll = 0;
+                stale = true;
+            } else {
+                q[0] = 0;
+                scroll = 0;
+                stale = true;
+            }
         }
     }
 }
@@ -374,7 +454,9 @@ void app_main(void)
             vTaskDelay(pdMS_TO_TICKS(3000));
             continue;
         }
-        ESP_LOGI(TAG, "%s: %u words, opened in %lld ms", sd_name(d), (unsigned)sd_count(d),
+        ESP_LOGI(TAG, "%s: %u words, %u synonyms%s, opened in %lld ms", sd_name(d),
+                 (unsigned)sd_count(d), (unsigned)sd_syn_count(d),
+                 sd_resorted(d) ? " (out of order: sorted)" : "",
                  (long long)(esp_timer_get_time() - t0) / 1000);
         /* The .dict stays open: a held volume unmounts only after release. */
         storage_id_t vol = storage_of_path(ifo);
