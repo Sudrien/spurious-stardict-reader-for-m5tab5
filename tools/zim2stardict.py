@@ -23,6 +23,7 @@ with --text, which is what a reader without an HTML renderer wants.
 import argparse
 import re
 import sys
+import time
 from pathlib import Path
 
 from bs4 import BeautifulSoup
@@ -69,17 +70,48 @@ def clean(html, as_text):
     return "".join(str(c) for c in body.children).strip()
 
 
-def entries(zim, lang, as_text, keep_ns, limit, stats):
+class Progress:
+    """Print a status line to stderr at most every `interval` seconds."""
+
+    def __init__(self, label, total, interval, quiet):
+        self.label, self.total, self.interval, self.quiet = label, total, interval, quiet
+        self.start = self.last = time.monotonic()
+
+    def update(self, n, extra=""):
+        now = time.monotonic()
+        if self.quiet or now - self.last < self.interval:
+            return
+        self.last = now
+        elapsed = now - self.start
+        rate = n / elapsed if elapsed else 0
+        eta = f", ~{(self.total - n) / rate:.0f}s left" if rate and self.total else ""
+        print(f"{self.label}: {n}/{self.total} ({100 * n / self.total:.1f}%), "
+              f"{rate:.0f}/s{eta}{extra}", file=sys.stderr, flush=True)
+
+    def done(self, extra=""):
+        if not self.quiet:
+            print(f"{self.label}: done in {time.monotonic() - self.start:.1f}s{extra}",
+                  file=sys.stderr, flush=True)
+
+
+def entries(zim, lang, as_text, keep_ns, limit, stats, interval, quiet):
+    total = zim.entry_count
+
     # Redirects first, so each real entry can carry them as synonyms.
     redirects = {}
-    for i in range(zim.entry_count):
+    prog = Progress("scanning redirects", total, interval, quiet)
+    for i in range(total):
         e = zim._get_entry_by_id(i)
         if e.is_redirect:
             target = e.get_redirect_entry().path
             redirects.setdefault(target, []).append(e.title)
+        prog.update(i + 1, f", {len(redirects)} targets")
+    prog.done(f", {len(redirects)} redirect targets")
 
     done = 0
-    for i in range(zim.entry_count):
+    prog = Progress("converting", total, interval, quiet)
+    for i in range(total):
+        prog.update(i, f", kept {stats['entries']}")
         e = zim._get_entry_by_id(i)
         if e.is_redirect:
             continue
@@ -105,7 +137,8 @@ def entries(zim, lang, as_text, keep_ns, limit, stats):
         yield words, defi
         done += 1
         if limit and done >= limit:
-            return
+            break
+    prog.done(f", kept {stats['entries']}")
 
 
 def main(argv=None):
@@ -118,11 +151,17 @@ def main(argv=None):
     ap.add_argument("--keep-namespaces", action="store_true",
                     help="keep titles containing ':' (Category:, Appendix:, ...)")
     ap.add_argument("--no-dictzip", action="store_true", help="leave .dict uncompressed")
+    ap.add_argument("--quiet", action="store_true", help="no progress output")
+    ap.add_argument("--progress-interval", type=float, default=5.0, metavar="SECS",
+                    help="seconds between progress lines (default: 5)")
     ap.add_argument("--limit", type=int, default=0, help="stop after N entries (for testing)")
     args = ap.parse_args(argv)
 
     name = args.name or args.zim.stem
+    log = (lambda *a: None) if args.quiet else (lambda *a: print(*a, file=sys.stderr, flush=True))
     zim = Archive(args.zim)
+    log(f"{args.zim}: {zim.entry_count} entries, keeping the {args.lang} section "
+        f"as {'text' if args.text else 'HTML'}")
     stats = dict(entries=0, synonyms=0, namespace=0, no_section=0, empty=0)
 
     Glossary.init()
@@ -132,7 +171,7 @@ def main(argv=None):
     glos.sourceLangName = args.lang
     fmt = "m" if args.text else "h"
     for words, defi in entries(zim, args.lang, args.text, args.keep_namespaces,
-                               args.limit, stats):
+                               args.limit, stats, args.progress_interval, args.quiet):
         glos.addEntry(glos.newEntry(words, defi, defiFormat=fmt))
 
     if not stats["entries"]:
@@ -140,12 +179,17 @@ def main(argv=None):
 
     outdir = args.outdir / name
     outdir.mkdir(parents=True, exist_ok=True)
+    log(f"writing StarDict to {outdir} (sorting and "
+        f"{'leaving .dict uncompressed' if args.no_dictzip else 'compressing'}; "
+        f"this step prints nothing and can take a while)")
+    t0 = time.monotonic()
     glos.write(
         str(outdir / f"{name}.ifo"),
         formatName="Stardict",
         dictzip=not args.no_dictzip,
         sametypesequence=fmt,
     )
+    log(f"writing: done in {time.monotonic() - t0:.1f}s")
     print(f"{outdir}: {stats['entries']} entries, {stats['synonyms']} synonyms; "
           f"skipped {stats['namespace']} namespaced, {stats['no_section']} without "
           f"{args.lang} section, {stats['empty']} empty", file=sys.stderr)

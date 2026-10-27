@@ -18,3 +18,9 @@
   lists `python3-bs4 python3-libzim python3-pyglossary` as the Debian
   route, plus the lxml and dictzip needs. Documentation only; the apt
   package names were not checked against a Debian mirror from the session.
+- **0004 Progress output for tools/zim2stardict.py.** Prints an opening
+  line, then count/percent/rate/ETA lines for the redirect scan and the
+  conversion every 5 s (`--progress-interval`), a notice before the silent
+  pyGlossary write, and timings. `--quiet` leaves only the final summary.
+  Checked on the small test ZIM only; the rate and ETA are untested at
+  real-dump scale.
