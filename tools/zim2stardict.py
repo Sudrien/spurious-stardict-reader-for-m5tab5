@@ -22,6 +22,7 @@ with --text, which is what a reader without an HTML renderer wants.
 """
 
 import argparse
+import collections
 import re
 import sys
 import time
@@ -95,8 +96,16 @@ class Progress:
                   file=sys.stderr, flush=True)
 
 
-def entries(zim, lang, as_text, keep_ns, limit, stats, interval, quiet):
+def note_headings(content, counter):
+    """Count the h2 ids of a page, to tell the user what the dump does use."""
+    for h2 in BeautifulSoup(content, "lxml").find_all("h2"):
+        counter[h2.get("id") or h2.get_text(strip=True)] += 1
+
+
+def entries(zim, lang, as_text, keep_ns, limit, stats, interval, quiet, whole_page):
     total = zim.entry_count
+    lang_bytes = lang.encode()
+    sample_budget = [300]  # pages to inspect for the "what headings exist" hint
 
     # Redirects first, so each real entry can carry them as synonyms.
     redirects = {}
@@ -123,11 +132,26 @@ def entries(zim, lang, as_text, keep_ns, limit, stats, interval, quiet):
         if not keep_ns and ":" in title:
             stats["namespace"] += 1
             continue
-        soup = BeautifulSoup(bytes(item.content), "lxml")
-        section = language_section(soup, lang)
-        if section is None:
-            stats["no_section"] += 1
-            continue
+        content = bytes(item.content)
+        if whole_page:
+            soup = BeautifulSoup(content, "lxml")
+            section = str((soup.body or soup).decode_contents())
+        else:
+            # Cheap pre-filter: skip the parse when the heading id cannot be there.
+            if lang_bytes not in content:
+                stats["no_section"] += 1
+                if sample_budget[0] > 0:
+                    sample_budget[0] -= 1
+                    note_headings(content, stats["headings"])
+                continue
+            soup = BeautifulSoup(content, "lxml")
+            section = language_section(soup, lang)
+            if section is None:
+                stats["no_section"] += 1
+                if sample_budget[0] > 0:
+                    sample_budget[0] -= 1
+                    note_headings(content, stats["headings"])
+                continue
         defi = clean(section, as_text)
         if not defi:
             stats["empty"] += 1
@@ -148,6 +172,9 @@ def main(argv=None):
     ap.add_argument("outdir", type=Path, help="directory to create the dictionary in")
     ap.add_argument("--name", help="dictionary name (default: ZIM filename stem)")
     ap.add_argument("--lang", default="English", help="language section to keep (default: English)")
+    ap.add_argument("--whole-page", action="store_true",
+                    help="keep the whole page instead of one language section "
+                         "(for dumps with no per-language h2, e.g. Simple English)")
     ap.add_argument("--text", action="store_true", help="store plain text instead of HTML")
     ap.add_argument("--keep-namespaces", action="store_true",
                     help="keep titles containing ':' (Category:, Appendix:, ...)")
@@ -161,20 +188,31 @@ def main(argv=None):
     name = args.name or args.zim.stem
     log = (lambda *a: None) if args.quiet else (lambda *a: print(*a, file=sys.stderr, flush=True))
     zim = Archive(args.zim)
-    log(f"{args.zim}: {zim.entry_count} entries, keeping the {args.lang} section "
+    log(f"{args.zim}: {zim.entry_count} entries, keeping "
+        f"{'the whole page' if args.whole_page else 'the ' + args.lang + ' section'} "
         f"as {'text' if args.text else 'HTML'}")
-    stats = dict(entries=0, synonyms=0, namespace=0, no_section=0, empty=0)
+    stats = dict(entries=0, synonyms=0, namespace=0, no_section=0, empty=0,
+                 headings=collections.Counter())
 
     Glossary.init()
     glos = Glossary()
     glos.setInfo("title", name)
-    glos.setInfo("description", f"{args.lang} section of {args.zim.name}")
+    glos.setInfo("description", f"{args.zim.name}" if args.whole_page
+                 else f"{args.lang} section of {args.zim.name}")
     glos.sourceLangName = args.lang
     fmt = "m" if args.text else "h"
     for words, defi in entries(zim, args.lang, args.text, args.keep_namespaces,
-                               args.limit, stats, args.progress_interval, args.quiet):
+                               args.limit, stats, args.progress_interval, args.quiet,
+                               args.whole_page):
         glos.addEntry(glos.newEntry(words, defi, defiFormat=fmt))
 
+    if stats["no_section"] > 10 * max(stats["entries"], 1):
+        common = ", ".join(f"{h!r} ({n})" for h, n in stats["headings"].most_common(12))
+        print(f"warning: {stats['no_section']} pages had no '{args.lang}' section but "
+              f"{stats['entries']} did.\n  h2 headings on a sample of those pages: "
+              f"{common or 'none'}\n  If this dump has no per-language headings, "
+              f"use --whole-page; otherwise pick --lang from the list.",
+              file=sys.stderr)
     if not stats["entries"]:
         sys.exit(f"no '{args.lang}' sections found in {args.zim}")
 

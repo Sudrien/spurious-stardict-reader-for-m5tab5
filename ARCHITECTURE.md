@@ -30,3 +30,13 @@
   Checked on Ubuntu 24.04: `dictzip` is in the archive, and with
   python-idzip uninstalled the script wrote a `.dict.dz` that
   `dictzip -d -c` read back.
+- **0006 Whole-page mode and heading report for tools/zim2stardict.py.**
+  A run on `wiktionary_en-simple_all_nopic_2026-10.zim` (54840 entries)
+  kept 3 entries and skipped 54186 for "no English section": the
+  per-language `<h2>` lookup does not fit that dump. Adds `--whole-page`
+  (keep the page body, no language lookup) and, when pages without the
+  section outnumber kept ones 10:1, a warning listing the `<h2>` ids seen
+  on a sample, so the next run says what to pass. Pages whose bytes lack
+  the language string are now skipped without a parse. Checked on
+  hand-built ZIMs only; not yet run on the real Simple English dump, so
+  what `--whole-page` keeps from its pages (title, navigation) is unseen.
