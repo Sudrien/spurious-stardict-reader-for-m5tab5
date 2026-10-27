@@ -82,3 +82,14 @@
   in a known place, 0 otherwise`. Built on IDF v6.1 as 0008 was, no
   warnings, `0xe8900 bytes ... (55%) free`. Not run on a Tab5; 0008 has
   not been either.
+- **0010 Inflate .syn.dz without miniz's on-stack decompressor.** First
+  run on a Tab5, of 0009 (cbbb2c5, IDF v6.1-829): the 236 GB SDHC/SDXC
+  card mounted (`tab5_storage: microSD mounted at /sd`), USB host up, then
+  `Guru Meditation Error: Core 0 panic'ed (Stack protection fault)` in
+  task main, backtrace `slurp at main/stardict.c:243` -- opening the
+  `.syn.dz`. `tinfl_decompress_mem_to_heap()` keeps its ~11 KB
+  `tinfl_decompressor` on the stack; the main task has 8 KB. `slurp()` now
+  allocates the decompressor and, from the gzip trailer's ISIZE, the
+  output, and inflates in one call. Deepest frames in the firmware build
+  (`-fstack-usage`): sd_open 864, define 672, scan 624 bytes. Host tests
+  as for 0009 pass; built on IDF v6.1; not yet rerun on the Tab5.

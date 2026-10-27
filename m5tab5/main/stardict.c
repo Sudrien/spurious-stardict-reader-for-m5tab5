@@ -239,10 +239,23 @@ static uint8_t *slurp(const char *path, size_t *len)
     if (flg & 8) while (p < (size_t)n && b[p++]) {}
     if (flg & 16) while (p < (size_t)n && b[p++]) {}
     if (flg & 2) p += 2;
-    size_t out_len = 0;
-    uint8_t *out = p + 8 <= (size_t)n ? tinfl_decompress_mem_to_heap(b + p, (size_t)n - p - 8, &out_len, 0) : NULL;
+    /* The trailer's ISIZE is the inflated size (mod 4 GB). The
+     * decompressor is ~11 KB, so it goes on the heap: miniz's
+     * tinfl_decompress_mem_to_heap() keeps one on the stack, which
+     * overflowed the Tab5's 8 KB main task (0010). */
+    uint8_t *out = NULL;
+    tinfl_decompressor *inf = NULL;
+    size_t want = (size_t)(b[n - 4] | b[n - 3] << 8 | b[n - 2] << 16 | (uint32_t)b[n - 1] << 24);
+    if (p + 8 <= (size_t)n && want && (inf = malloc(sizeof *inf)) && (out = malloc(want))) {
+        tinfl_init(inf);
+        size_t in_sz = (size_t)n - p - 8, out_sz = want;
+        tinfl_status st = tinfl_decompress(inf, b + p, &in_sz, out, out, &out_sz,
+                                           TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+        if (st != TINFL_STATUS_DONE || out_sz != want) { free(out); out = NULL; }
+    }
+    free(inf);
     free(b);
-    *len = out_len;
+    *len = out ? want : 0;
     return out;
 }
 
