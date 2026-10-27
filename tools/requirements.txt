@@ -1,0 +1,5 @@
+libzim
+pyglossary
+beautifulsoup4
+lxml
+python-idzip

@@ -7,3 +7,10 @@
 - **0001 Clean up CLAUDE.md for this project.** Removes hardware notes and
   patch history inherited from another project; keeps the patch workflow
   and ESP-IDF build rules. Documentation only, not built or run.
+- **0002 Add tools/zim2stardict.py.** Converts a Kiwix Wiktionary ZIM to a
+  StarDict dictionary with pyGlossary: keeps one language section per page
+  (`--lang`, default English), turns ZIM redirects into `.syn` synonyms,
+  skips `Category:`-style titles, stores HTML or plain text (`--text`).
+  Run only on a small hand-built ZIM (2 entries, 1 synonym, dictzip
+  output read back); not run on a real Kiwix dump, so the section
+  layout handling is unproven against one.
