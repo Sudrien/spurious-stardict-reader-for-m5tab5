@@ -28,13 +28,20 @@ import sys
 import time
 from pathlib import Path
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment, NavigableString
 from libzim.reader import Archive
 from pyglossary.glossary_v2 import Glossary
 
-# Tags that carry no definition text.
-JUNK = ("script", "style", "link", "meta", "sup.reference", ".mw-editsection",
-        "table.navbox", "div.NavFrame", "figure", "img")
+# Things that carry no definition: media, edit links, navigation boxes.
+JUNK = ("script", "style", "link", "meta", "img", "figure", "audio", "video",
+        "sup.reference", ".mw-editsection", ".mw-empty-elt", "div.thumb",
+        "table.audiotable", "table.navbox", "table.toccolours", "div.NavFrame")
+
+# Tags kept in HTML output; everything else is unwrapped (its text stays).
+KEEP = {"p", "br", "b", "i", "u", "sup", "sub", "code", "ul", "ol", "li", "dl",
+        "dt", "dd", "h2", "h3", "h4", "h5", "table", "tr", "td", "th", "blockquote"}
+BLOCK = {"p", "div", "section", "ul", "ol", "li", "dl", "dt", "dd", "h1", "h2",
+         "h3", "h4", "h5", "h6", "table", "tr", "blockquote", "figcaption"}
 
 
 def language_section(soup, lang):
@@ -59,17 +66,75 @@ def language_section(soup, lang):
     return body or None
 
 
+def _text(node, out):
+    """Append the plain text of `node` to list `out`, with newlines at blocks."""
+    if isinstance(node, NavigableString):
+        if not isinstance(node, Comment):
+            out.append(re.sub(r"\s+", " ", str(node)))
+        return
+    name = node.name
+    if name == "br":
+        out.append("\n")
+        return
+    heading = name in ("h2", "h3", "h4", "h5", "h6")
+    if name in ("td", "th"):
+        # One line per cell, so a table row stays on one line.
+        cell = []
+        for child in node.children:
+            _text(child, cell)
+        cell = re.sub(r"\s+", " ", "".join(cell)).strip()
+        if cell:
+            out.append(f" {cell} | ")
+        return
+    if name == "li" and not node.get_text(strip=True):
+        return
+    if name == "li":
+        parent = node.parent
+        if parent is not None and parent.name == "ol":
+            n = 1 + len([x for x in node.find_previous_siblings("li")])
+            out.append(f"\n{n}. ")
+        else:
+            out.append("\n- ")
+    elif name == "dd":
+        out.append("\n  ")
+    elif heading:
+        out.append("\n\x00")
+    elif name in BLOCK:
+        out.append("\n")
+    for child in node.children:
+        _text(child, out)
+    if heading or name in BLOCK:
+        out.append("\n")
+
+
 def clean(html, as_text):
     soup = BeautifulSoup(html, "lxml")
+    root = soup.select_one(".mw-parser-output") or soup.body or soup
     for sel in JUNK:
-        for el in soup.select(sel):
+        for el in root.select(sel):
             el.decompose()
     if as_text:
-        text = soup.get_text("\n")
-        text = re.sub(r"[ \t]+\n", "\n", text)
-        return re.sub(r"\n{3,}", "\n\n", text).strip()
-    body = soup.body or soup
-    return "".join(str(c) for c in body.children).strip()
+        out = []
+        for child in root.children:
+            _text(child, out)
+        lines = [re.sub(r"[ \t]+", " ", l).strip(" |") if "|" in l
+                 else re.sub(r"[ \t]+", " ", l).strip()
+                 for l in "".join(out).split("\n")]
+        # Drop empty lines; a heading (marked \x00) gets one blank line before it.
+        text = []
+        for l in lines:
+            if l.startswith("\x00"):
+                text.extend(["", l[1:].strip()])
+            elif l:
+                text.append(l)
+        return "\n".join(text).strip()
+    for el in root.find_all(True):
+        if el.name not in KEEP:
+            el.unwrap()
+        else:
+            el.attrs = {}
+    html = "".join(str(c) for c in root.children)
+    return re.sub(r"\n{2,}", "\n", html).strip()
 
 
 class Progress:
@@ -135,7 +200,7 @@ def entries(zim, lang, as_text, keep_ns, limit, stats, interval, quiet, whole_pa
         content = bytes(item.content)
         if whole_page:
             soup = BeautifulSoup(content, "lxml")
-            section = str((soup.body or soup).decode_contents())
+            section = content.decode("utf-8", "replace")
         else:
             # Cheap pre-filter: skip the parse when the heading id cannot be there.
             if lang_bytes not in content:
@@ -230,8 +295,10 @@ def main(argv=None):
     )
     log(f"writing: done in {time.monotonic() - t0:.1f}s")
     print(f"{outdir}: {stats['entries']} entries, {stats['synonyms']} synonyms; "
-          f"skipped {stats['namespace']} namespaced, {stats['no_section']} without "
-          f"{args.lang} section, {stats['empty']} empty", file=sys.stderr)
+          f"skipped {stats['namespace']} namespaced, "
+          + ("" if args.whole_page else f"{stats['no_section']} without "
+                                        f"{args.lang} section, ")
+          + f"{stats['empty']} empty", file=sys.stderr)
 
 
 if __name__ == "__main__":

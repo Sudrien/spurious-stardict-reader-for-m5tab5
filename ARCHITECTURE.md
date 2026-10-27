@@ -40,3 +40,15 @@
   the language string are now skipped without a parse. Checked on
   hand-built ZIMs only; not yet run on the real Simple English dump, so
   what `--whole-page` keeps from its pages (title, navigation) is unseen.
+- **0007 Clean page content in tools/zim2stardict.py.** `--whole-page` on
+  the Simple English dump (0006 run, 54189 entries) kept the Vector skin
+  chrome, navboxes and audio tables, and `--text` put every inline element
+  on its own line. Now only `.mw-parser-output` is kept; audio tables,
+  navboxes, images, edit links and empty bullets are dropped; text mode
+  is block-aware (numbered `ol`, `-` for `ul`, one line per table row); HTML
+  mode drops attributes and unwraps links and spans. Full run on
+  `wiktionary_en-simple_all_nopic_2026-10.zim` with `--whole-page --text`:
+  `54189 entries, 475 synonyms; skipped 4 namespaced, 0 empty` in 7m44s,
+  `.dict.dz` 3.1 MB (was 4.2 MB). `cat` and `!` read as intended; not yet
+  seen on a Tab5. The "without English section" count is no longer
+  printed under `--whole-page`.
