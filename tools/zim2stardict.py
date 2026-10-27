@@ -2,7 +2,12 @@
 """Convert a Kiwix Wiktionary ZIM dump to a StarDict dictionary.
 
     pip install -r tools/requirements.txt
+    # or, on Debian/Ubuntu:
+    sudo apt install python3-bs4 python3-libzim python3-pyglossary
     tools/zim2stardict.py wiktionary_en_all_nopic_2026-09.zim out/ --lang English
+
+The script parses with lxml (python3-lxml), and .dict.dz needs python-idzip
+or the dictzip utility on PATH; pass --no-dictzip to skip compression.
 
 Writes out/<name>/<name>.{ifo,idx,dict[.dz],syn}.
 

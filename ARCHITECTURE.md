@@ -14,3 +14,7 @@
   Run only on a small hand-built ZIM (2 entries, 1 synonym, dictzip
   output read back); not run on a real Kiwix dump, so the section
   layout handling is unproven against one.
+- **0003 Note the apt packages for tools/zim2stardict.py.** Docstring now
+  lists `python3-bs4 python3-libzim python3-pyglossary` as the Debian
+  route, plus the lxml and dictzip needs. Documentation only; the apt
+  package names were not checked against a Debian mirror from the session.
