@@ -11,12 +11,17 @@ The script parses with lxml. Compressing .dict.dz needs either python-idzip
 apt route above); pass --no-dictzip to skip compression.
 
 A .dict over 4 GiB (e.g. --whole-page on a full Wiktionary) needs --large-file.
+Compressing data that large takes python-idzip, which writes it as several
+dictzip members; the dictzip utility cannot. The Tab5 seeks no further than
+2 GiB into a file, so there a big dictionary has to be a .dict.dz.
 
 Pages are converted by --jobs worker processes (default: one per CPU), in
 chunks committed to out/<name>/<name>.work.sqlite as they finish. An
 interrupted run, started again with the same arguments, picks up from the
 last committed chunk; --restart throws the work file away and starts over.
-The work file is removed once the dictionary is written.
+The work file is kept after the dictionary is written, so writing it again
+with other output options (--large-file, --no-dictzip, --name) skips the
+conversion; --remove-work deletes it instead.
 
 Writes out/<name>/<name>.{ifo,idx,dict[.dz],syn}.
 
@@ -31,6 +36,7 @@ with --text, which is what a reader without an HTML renderer wants.
 
 import argparse
 import collections
+import importlib.util
 import json
 import multiprocessing
 import os
@@ -357,6 +363,22 @@ def stored_entries(db, limit, stats):
         yield words, defi
 
 
+def tab5_limits(outdir, name):
+    """Warn about files the Tab5's reader will refuse or cannot hold."""
+    gib = 2**30
+    for f in (outdir / f"{name}.dict", outdir / f"{name}.dict.dz"):
+        if f.exists() and f.stat().st_size > 2 * gib - 1:
+            print(f"warning: {f.name} is {f.stat().st_size / gib:.2f} GiB; the Tab5 "
+                  f"cannot seek past 2 GiB in a file"
+                  + ("" if f.suffix == ".dz" else ", so compress it (drop --no-dictzip)"),
+                  file=sys.stderr)
+    idx = outdir / f"{name}.idx"
+    if idx.exists() and idx.stat().st_size > 24 * 2**20:
+        print(f"warning: {idx.name} is {idx.stat().st_size / 2**20:.0f} MiB; the Tab5 "
+              f"reads the .idx whole into its 32 MiB of PSRAM, so this will not open there",
+              file=sys.stderr)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("zim", type=Path, help="Kiwix ZIM file")
@@ -381,11 +403,15 @@ def main(argv=None):
                     help="worker processes (default: one per CPU)")
     ap.add_argument("--chunk", type=int, default=500, metavar="N",
                     help="ZIM entries per committed chunk (default: 500)")
+    ap.add_argument("--remove-work", action="store_true",
+                    help="delete the work file once the dictionary is written")
     ap.add_argument("--restart", action="store_true",
                     help="discard an interrupted run's work file and start over")
     args = ap.parse_args(argv)
-    if args.large_file:
-        args.no_dictzip = True  # dictzip cannot index data this large
+    if args.large_file and not args.no_dictzip:
+        if importlib.util.find_spec("idzip") is None:
+            sys.exit("--large-file compression needs python-idzip (the dictzip utility "
+                     "cannot index data this large); install it, or pass --no-dictzip")
 
     name = args.name or args.zim.stem
     log = (lambda *a: None) if args.quiet else (lambda *a: print(*a, file=sys.stderr, flush=True))
@@ -441,8 +467,13 @@ def main(argv=None):
     )
     log(f"writing: done in {time.monotonic() - t0:.1f}s")
     db.close()
-    for suffix in ("", "-wal", "-shm"):
-        Path(f"{work_path}{suffix}").unlink(missing_ok=True)
+    if args.remove_work:
+        for suffix in ("", "-wal", "-shm"):
+            Path(f"{work_path}{suffix}").unlink(missing_ok=True)
+    else:
+        log(f"kept {work_path} ({work_path.stat().st_size / 2**30:.1f} GiB); "
+            f"delete it, or pass --remove-work, once the dictionary is right")
+    tab5_limits(outdir, name)
     print(f"{outdir}: {stats['entries']} entries, {stats['synonyms']} synonyms; "
           f"skipped {stats['namespace']} namespaced, "
           + ("" if args.whole_page else f"{stats['no_section']} without "

@@ -134,3 +134,18 @@
   on one core; the .ifo/.idx/.dict/.syn are byte-identical to the old
   script's for HTML, `--text`, `--whole-page` and `--limit`. Not run on a
   real Wiktionary dump.
+- **0015 Read multi-member .dict.dz; refuse what the Tab5 cannot seek to.**
+  `dz_open` walks idzip's back-to-back gzip members (one holds ~1.8 GiB
+  of dictzip chunks) and joins their tables; each member's end is found
+  by inflating its final block, and every member but the last must be
+  whole chunks. A file position past 2 GiB is refused at open, for a
+  `.dict.dz` and (from the furthest offset in the `.idx`) for a plain
+  `.dict`: off_t is 32 bits on ESP-IDF (`vfs_fat_lseek` logs it with
+  `%ld`), so fseek stops there. zim2stardict: `--large-file` no longer
+  implies `--no-dictzip` (it needs python-idzip and checks before
+  converting); the work file is kept after writing unless
+  `--remove-work`, so a rewrite with other output options skips the
+  conversion; it warns about a file over 2 GiB and an `.idx` over 24 MiB.
+  Host tests pass on single- and 8-member files (ASan/UBSan) and refuse a
+  plain `.dict` reaching 3 GiB, a sparse two-member `.dict.dz` reaching
+  past 2 GiB and a truncated one. Not built on IDF; not run on the Tab5.
