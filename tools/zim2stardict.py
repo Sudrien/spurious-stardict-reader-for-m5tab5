@@ -10,6 +10,8 @@ The script parses with lxml. Compressing .dict.dz needs either python-idzip
 (pip only, there is no Debian package) or the dictzip utility on PATH (the
 apt route above); pass --no-dictzip to skip compression.
 
+A .dict over 4 GiB (e.g. --whole-page on a full Wiktionary) needs --large-file.
+
 Writes out/<name>/<name>.{ifo,idx,dict[.dz],syn}.
 
 Each ZIM article is a whole Wiktionary page, with one section per language.
@@ -244,11 +246,16 @@ def main(argv=None):
     ap.add_argument("--keep-namespaces", action="store_true",
                     help="keep titles containing ':' (Category:, Appendix:, ...)")
     ap.add_argument("--no-dictzip", action="store_true", help="leave .dict uncompressed")
+    ap.add_argument("--large-file", action="store_true",
+                    help="allow a .dict over 4 GiB (64-bit .idx offsets; implies "
+                         "--no-dictzip, and the reader must support idxoffsetbits=64)")
     ap.add_argument("--quiet", action="store_true", help="no progress output")
     ap.add_argument("--progress-interval", type=float, default=5.0, metavar="SECS",
                     help="seconds between progress lines (default: 5)")
     ap.add_argument("--limit", type=int, default=0, help="stop after N entries (for testing)")
     args = ap.parse_args(argv)
+    if args.large_file:
+        args.no_dictzip = True  # dictzip cannot index data this large
 
     name = args.name or args.zim.stem
     log = (lambda *a: None) if args.quiet else (lambda *a: print(*a, file=sys.stderr, flush=True))
@@ -292,6 +299,7 @@ def main(argv=None):
         formatName="Stardict",
         dictzip=not args.no_dictzip,
         sametypesequence=fmt,
+        large_file=args.large_file,
     )
     log(f"writing: done in {time.monotonic() - t0:.1f}s")
     print(f"{outdir}: {stats['entries']} entries, {stats['synonyms']} synonyms; "
