@@ -149,3 +149,20 @@
   Host tests pass on single- and 8-member files (ASan/UBSan) and refuse a
   plain `.dict` reaching 3 GiB, a sparse two-member `.dict.dz` reaching
   past 2 GiB and a truncated one. Not built on IDF; not run on the Tab5.
+- **0016 Read the .dict through FatFs, past 2 GiB.** `main/sd_io.h`:
+  64-bit random reads of the `.dict` or `.dict.dz`. On the Tab5,
+  `main/sd_io_fatfs.c` (from aimless-moving-map's `main/ffread.c`) maps
+  the VFS path to its FatFs drive with `storage_of_path()` and
+  `storage_ff_drive()` and reads with `f_lseek()`/`f_read()` -- FSIZE_t
+  is 64 bits with exFAT -- holding the storage I/O lease a
+  STORAGE_IO_CHUNK at a time; on a host, `test/stardict/sd_io_stdio.c`
+  with fseeko(). 0015's 2 GiB refusals are gone: a plain `.dict` and a
+  `.dict.dz` read at any size the card's filesystem holds.
+  `CONFIG_FATFS_USE_FASTSEEK=y` (`rm sdkconfig`): opening a dictionary
+  should log `sd_io: 0:/dict/<name>.dict[.dz]: fast seek, N of M table
+  items`, and `no fast seek` if the value did not take. Host tests pass,
+  including a sparse 5 GiB `.dict` with every definition past 5 GiB and a
+  real 2.4 GB two-member `.dict.dz` with every definition past 2.25 GB.
+  `sd_io_fatfs.c` compiles with -Werror against IDF v6.0's ff.h (FAT32
+  and exFAT settings) and feckless-storage v0.1.0's headers, ESP log and
+  heap calls stubbed. Not built on IDF; not run on the Tab5.

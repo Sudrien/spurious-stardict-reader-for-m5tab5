@@ -18,10 +18,9 @@
  * dictzip of its own; their tables are joined here into one, which works
  * because every member but the last is whole chunks of the same size.
  *
- * Every file position must stay under 2 GiB: off_t is 32 bits on
- * ESP-IDF (vfs_fat_lseek logs it with %ld), so fseek cannot go further.
- * Offsets into the uncompressed data are only arithmetic, and may be
- * larger -- a .dict.dz is how a dictionary past 2 GiB is read.
+ * The .dict or .dict.dz is read through sd_io.h, with 64-bit offsets:
+ * on the Tab5 through FatFs itself, as fseek() stops at 2 GiB there.
+ * The small files (.ifo, .idx, .syn) are read whole, with stdio.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -36,16 +35,15 @@
 
 #include "dmeta.h"
 #include "miniz_tinfl.h"
+#include "sd_io.h"
 
 /* ---- dictzip ------------------------------------------------------------ */
 
-#define SEEK_MAX 0x7fffffffu    /* the furthest fseek reaches on the Tab5 */
-
 typedef struct {
-    FILE *f;
+    sd_file_t *f;
     uint32_t chlen;         /* uncompressed bytes per chunk */
     uint32_t chcnt;         /* across all members */
-    uint32_t *at;           /* where chunk i starts in the file */
+    uint64_t *at;           /* where chunk i starts in the file */
     uint16_t *clen;         /* its compressed size */
     uint8_t *in;            /* largest compressed chunk */
     uint8_t *out;           /* chlen */
@@ -70,12 +68,12 @@ static uint32_t le32(const uint8_t *p) { return le16(p) | (uint32_t)le16(p + 2) 
 
 /* Read the gzip member header at pos and append its RA table to z.
  * Returns where the member's data starts, or 0 (with err set). */
-static uint32_t dz_member(dz_t *z, FILE *f, uint32_t pos, char *err, size_t err_len)
+static uint64_t dz_member(dz_t *z, uint64_t pos, char *err, size_t err_len)
 {
     uint8_t h[12];
-    if (fseek(f, (long)pos, SEEK_SET) || fread(h, 1, 12, f) != 12 || h[0] != 0x1f || h[1] != 0x8b || h[2] != 8) {
-        snprintf(err, err_len, pos ? ".dict.dz: no gzip member at byte %lu" : ".dict.dz is not gzip",
-                 (unsigned long)pos);
+    if (sd_file_read(z->f, pos, 12, h) != 12 || h[0] != 0x1f || h[1] != 0x8b || h[2] != 8) {
+        snprintf(err, err_len, pos ? ".dict.dz: no gzip member at byte %llu" : ".dict.dz is not gzip",
+                 (unsigned long long)pos);
         return 0;
     }
     uint8_t flg = h[3];
@@ -85,7 +83,7 @@ static uint32_t dz_member(dz_t *z, FILE *f, uint32_t pos, char *err, size_t err_
     }
     uint16_t xlen = le16(h + 10);
     uint8_t *x = malloc(xlen ? xlen : 1);
-    if (!x || fread(x, 1, xlen, f) != xlen) {
+    if (!x || sd_file_read(z->f, pos + 12, xlen, x) != xlen) {
         free(x);
         snprintf(err, err_len, ".dict.dz header is short");
         return 0;
@@ -97,7 +95,7 @@ static uint32_t dz_member(dz_t *z, FILE *f, uint32_t pos, char *err, size_t err_
             const uint8_t *ra = x + p + 4;
             uint32_t chlen = le16(ra + 2), n = le16(ra + 4);
             if (le16(ra) != 1 || 6 + 2 * n > sl || !chlen || (z->chlen && chlen != z->chlen)) break;
-            uint32_t *at = realloc(z->at, (z->chcnt + n + 1) * sizeof *at);
+            uint64_t *at = realloc(z->at, (z->chcnt + n + 1) * sizeof *at);
             if (at) z->at = at;
             uint16_t *cl = realloc(z->clen, (z->chcnt + n + 1) * sizeof *cl);
             if (cl) z->clen = cl;
@@ -115,32 +113,42 @@ static uint32_t dz_member(dz_t *z, FILE *f, uint32_t pos, char *err, size_t err_
         snprintf(err, err_len, ".dict.dz has no usable dictzip table");
         return 0;
     }
-    /* FNAME, FCOMMENT, FHCRC: then the data. */
-    if (flg & 8) { int c; while ((c = fgetc(f)) > 0) {} }
-    if (flg & 16) { int c; while ((c = fgetc(f)) > 0) {} }
-    if (flg & 2) { fgetc(f); fgetc(f); }
-    long data = ftell(f);
-    return data > 0 ? (uint32_t)data : 0;
+    /* FNAME, FCOMMENT (each NUL terminated), FHCRC: then the data. */
+    uint64_t q = pos + 12 + xlen;
+    for (int field = 8; field <= 16; field <<= 1) {
+        if (!(flg & field)) continue;
+        uint8_t b[64];
+        size_t got, k = 0;
+        while ((got = sd_file_read(z->f, q, sizeof b, b)) > 0) {
+            for (k = 0; k < got && b[k]; k++) {}
+            q += k + (k < got);
+            if (k < got) break;
+        }
+        if (!got) { snprintf(err, err_len, ".dict.dz header is short"); return 0; }
+    }
+    if (flg & 2) q += 2;
+    return q;
 }
 
 /* Open a .dict.dz of one or more members; NULL (with err set) if it is
- * not dictzip, or reaches past what the Tab5 can seek to. */
-static dz_t *dz_open(FILE *f, char *err, size_t err_len)
+ * not dictzip. */
+static dz_t *dz_open(sd_file_t *f, char *err, size_t err_len)
 {
     dz_t *z = calloc(1, sizeof *z);
     if (!z) { snprintf(err, err_len, "out of memory"); return NULL; }
     z->f = f;
     z->cached = UINT32_MAX;
-    uint32_t pos = 0, biggest = 0;
+    uint64_t pos = 0;
+    uint32_t biggest = 0;
     tinfl_decompressor *inf = malloc(sizeof *inf);
     if (!inf) { snprintf(err, err_len, "out of memory"); goto bad; }
     for (;;) {
         uint32_t first = z->chcnt;
-        uint32_t data = dz_member(z, f, pos, err, err_len);
+        uint64_t data = dz_member(z, pos, err, err_len);
         if (!data) goto bad;
         uint64_t end = data;
         for (uint32_t i = first; i < z->chcnt; i++) {
-            z->at[i] = (uint32_t)end;
+            z->at[i] = end;
             end += z->clen[i];
             if (z->clen[i] > biggest) biggest = z->clen[i];
         }
@@ -148,9 +156,8 @@ static dz_t *dz_open(FILE *f, char *err, size_t err_len)
          * from zlib, but inflated here to be sure), then CRC32 and ISIZE. */
         uint8_t t[64];
         size_t got;
-        if (end > SEEK_MAX || fseek(f, (long)end, SEEK_SET) || (got = fread(t, 1, sizeof t, f)) < 10) {
-            snprintf(err, err_len, end > SEEK_MAX ? ".dict.dz is over 2 GiB, past where the Tab5 can seek"
-                                                  : ".dict.dz is cut short");
+        if ((got = sd_file_read(f, end, sizeof t, t)) < 10) {
+            snprintf(err, err_len, ".dict.dz is cut short");
             goto bad;
         }
         uint8_t sink[16];
@@ -165,7 +172,7 @@ static dz_t *dz_open(FILE *f, char *err, size_t err_len)
         uint64_t next = end + in_sz + 8;
         /* Only the last member may end on a part chunk; is this it? */
         uint8_t m[3];
-        bool more = next <= SEEK_MAX && !fseek(f, (long)next, SEEK_SET) && fread(m, 1, 3, f) == 3;
+        bool more = sd_file_read(f, next, 3, m) == 3;
         if (!more) break;
         if (m[0] != 0x1f || m[1] != 0x8b || m[2] != 8) {
             snprintf(err, err_len, ".dict.dz: unexpected data after a member");
@@ -175,11 +182,7 @@ static dz_t *dz_open(FILE *f, char *err, size_t err_len)
             snprintf(err, err_len, ".dict.dz: a member before the last is not whole chunks");
             goto bad;
         }
-        if (next > SEEK_MAX) {
-            snprintf(err, err_len, ".dict.dz is over 2 GiB, past where the Tab5 can seek");
-            goto bad;
-        }
-        pos = (uint32_t)next;
+        pos = next;
     }
     free(inf);
     z->in = malloc(biggest ? biggest : 1);
@@ -196,7 +199,7 @@ static bool dz_chunk(dz_t *z, uint32_t i)
 {
     if (z->cached == i) return true;
     size_t clen = z->clen[i];
-    if (fseek(z->f, (long)z->at[i], SEEK_SET) || fread(z->in, 1, clen, z->f) != clen) return false;
+    if (sd_file_read(z->f, z->at[i], clen, z->in) != clen) return false;
     tinfl_init(&z->inf);
     size_t in_sz = clen, out_sz = z->chlen;
     tinfl_status st = tinfl_decompress(&z->inf, z->in, &in_sz, z->out, z->out, &out_sz,
@@ -240,7 +243,7 @@ struct sd_dict {
     bool off64;
     uint8_t *idx;
     uint32_t *at;           /* where each .idx entry starts */
-    FILE *dict;
+    sd_file_t *dict;
     dz_t *dz;               /* NULL for a plain .dict */
     uint32_t nsyn;
     uint8_t *syn;           /* the .syn, inflated if it was .syn.dz */
@@ -385,28 +388,19 @@ sd_dict_t *sd_open(const char *ifo, char *err, size_t err_len)
     f = NULL;
     size_t tail = d->off64 ? 12 : 8;
     uint32_t p = 0, n = 0;
-    uint64_t dict_end = 0;  /* furthest byte of the .dict a definition reaches */
     while (p < idxsize && n < d->count) {
         const uint8_t *z = memchr(d->idx + p, 0, idxsize - p);
         if (!z || (size_t)(z - d->idx) + 1 + tail > idxsize) break;
-        const uint8_t *t = z + 1;
-        uint64_t e = d->off64 ? ((uint64_t)be32(t) << 32 | be32(t + 4)) + be32(t + 8)
-                              : (uint64_t)be32(t) + be32(t + 4);
-        if (e > dict_end) dict_end = e;
         d->at[n++] = p;
         p = (uint32_t)(z - d->idx) + 1 + (uint32_t)tail;
     }
     if (n != d->count) { fail(err, err_len, ".idx has %u entries, the .ifo says %u", (unsigned)n, (unsigned)d->count); goto bad; }
 
     /* The .dict.dz, else the .dict. */
-    if (sibling(path, sizeof path, ifo, ".dict.dz") && (d->dict = fopen(path, "rb"))) {
+    if (sibling(path, sizeof path, ifo, ".dict.dz") && (d->dict = sd_file_open(path))) {
         if (!(d->dz = dz_open(d->dict, err, err_len))) goto bad;
-    } else if (!sibling(path, sizeof path, ifo, ".dict") || !(d->dict = fopen(path, "rb"))) {
+    } else if (!sibling(path, sizeof path, ifo, ".dict") || !(d->dict = sd_file_open(path))) {
         fail(err, err_len, "no .dict or .dict.dz next to %s", ifo);
-        goto bad;
-    } else if (dict_end > SEEK_MAX) {
-        fail(err, err_len, "the .dict is over 2 GiB, past where the Tab5 can seek; "
-             "compress it to .dict.dz (zim2stardict without --no-dictzip)");
         goto bad;
     }
     if (!d->name[0]) snprintf(d->name, sizeof d->name, "%s", ifo);
@@ -458,7 +452,7 @@ void sd_close(sd_dict_t *d)
 {
     if (!d) return;
     dz_free(d->dz);
-    if (d->dict) fclose(d->dict);
+    sd_file_close(d->dict);
     free(d->idx);
     free(d->at);
     free(d->syn);
@@ -690,7 +684,7 @@ char *sd_define(sd_dict_t *d, uint32_t i)
     uint8_t *raw = malloc(len + 1);
     if (!raw) return NULL;
     bool ok = d->dz ? dz_read(d->dz, off, len, raw)
-                    : !fseek(d->dict, (long)off, SEEK_SET) && fread(raw, 1, len, d->dict) == len;
+                    : sd_file_read(d->dict, off, len, raw) == len;
     if (!ok) { free(raw); return NULL; }
     raw[len] = 0;
 

@@ -12,8 +12,8 @@ apt route above); pass --no-dictzip to skip compression.
 
 A .dict over 4 GiB (e.g. --whole-page on a full Wiktionary) needs --large-file.
 Compressing data that large takes python-idzip, which writes it as several
-dictzip members; the dictzip utility cannot. The Tab5 seeks no further than
-2 GiB into a file, so there a big dictionary has to be a .dict.dz.
+dictzip members; the dictzip utility cannot. A file over 4 GiB, compressed
+or not, needs an exFAT card: FAT32 cannot hold it.
 
 Pages are converted by --jobs worker processes (default: one per CPU), in
 chunks committed to out/<name>/<name>.work.sqlite as they finish. An
@@ -367,11 +367,9 @@ def tab5_limits(outdir, name):
     """Warn about files the Tab5's reader will refuse or cannot hold."""
     gib = 2**30
     for f in (outdir / f"{name}.dict", outdir / f"{name}.dict.dz"):
-        if f.exists() and f.stat().st_size > 2 * gib - 1:
-            print(f"warning: {f.name} is {f.stat().st_size / gib:.2f} GiB; the Tab5 "
-                  f"cannot seek past 2 GiB in a file"
-                  + ("" if f.suffix == ".dz" else ", so compress it (drop --no-dictzip)"),
-                  file=sys.stderr)
+        if f.exists() and f.stat().st_size >= 4 * gib:
+            print(f"note: {f.name} is {f.stat().st_size / gib:.2f} GiB; FAT32 cannot "
+                  f"hold a file over 4 GiB, so it needs an exFAT card", file=sys.stderr)
     idx = outdir / f"{name}.idx"
     if idx.exists() and idx.stat().st_size > 24 * 2**20:
         print(f"warning: {idx.name} is {idx.stat().st_size / 2**20:.0f} MiB; the Tab5 "

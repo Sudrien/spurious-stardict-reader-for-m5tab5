@@ -33,6 +33,10 @@ CONFIG_FATFS_API_ENCODING_UTF_8=y
 # Two volumes, the card and a USB drive.
 CONFIG_FATFS_VOLUME_COUNT=2
 
+# Fast seek: main/sd_io_fatfs.c builds a cluster map when it opens a
+# .dict, so a lookup does not walk the FAT chain to its offset.
+CONFIG_FATFS_USE_FASTSEEK=y
+
 # USB host, as Duplicitous has it: drives behind a hub, the enumeration
 # filter feckless_drivers' usbhost.c hooks, and the host's DMA buffers
 # allowed in PSRAM.
