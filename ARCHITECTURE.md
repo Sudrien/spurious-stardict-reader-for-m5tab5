@@ -120,3 +120,17 @@
   `spurious: === Spurious <version>, built <date> <time>, ESP-IDF <ver> ===`,
   from esp_app_get_description(): the version is CI's version.txt (the tag
   or ref), else git describe. Built on IDF v6.1; not yet run on the Tab5.
+- **0014 Make zim2stardict fast and resumable.** Pages are converted by
+  `--jobs` worker processes (default one per CPU), each chunk of
+  `--chunk` entries committed to `<name>.work.sqlite` in the output
+  directory; a run killed partway (tested with SIGKILL) picks up from the
+  last committed chunk when started again with the same arguments, and
+  refuses a work file made from another ZIM or other options unless given
+  `--restart`. One process is twice as fast as before: the junk
+  selectors were 16 soupsieve tree walks per page, now one hand-written
+  pass, and the language section is no longer parsed a second time.
+  Redirects are collected in the same pass. Works with python-libzim's
+  renamed `get_entry_by_id`. On a 24k-entry test ZIM, 47 s became 22 s
+  on one core; the .ifo/.idx/.dict/.syn are byte-identical to the old
+  script's for HTML, `--text`, `--whole-page` and `--limit`. Not run on a
+  real Wiktionary dump.
