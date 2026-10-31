@@ -1,12 +1,12 @@
 /*
- * sd_io_fatfs.c -- see sd_io.h. From aimless-moving-map's main/ffread.c
+ * sd_io_fatfs.c -- see sd_io.h. From errant-moving-map's main/ffread.c
  * (itself its original/bigfile.cpp), on FAT32 or exFAT.
  *
  * The VFS path is turned into FatFs's: the volume from
  * storage_of_path(), its drive from storage_ff_drive(), and the rest of
  * the path after the mount point. Fast seek (CONFIG_FATFS_USE_FASTSEEK)
  * builds a cluster map at open; without it every seek walks the FAT
- * chain, which aimless measured at ~500 ms on a large file.
+ * chain, which errant (aimless, as was) measured at ~500 ms on a large file.
  *
  * Each read holds feckless-storage's I/O lease a STORAGE_IO_CHUNK at a
  * time, as the VFS path's reads did.

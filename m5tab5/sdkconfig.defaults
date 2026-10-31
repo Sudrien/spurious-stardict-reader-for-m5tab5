@@ -1,5 +1,5 @@
-# Deltas from the ESP32-P4 defaults; the board ones are duplicitous-for-
-# m5tab5's, less its launcher's app rollback.
+# Deltas from the ESP32-P4 defaults; the board ones are avoidant-launcher-
+# for-m5tab5's, less its launcher's app rollback.
 
 CONFIG_IDF_TARGET="esp32p4"
 
@@ -20,8 +20,8 @@ CONFIG_IDF_EXPERIMENTAL_FEATURES=y
 # Keeps the bootloader under 0x6000, so the table stays at 0x8000.
 CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y
 
-# Duplicitous's table: this app is its own factory app when flashed
-# standalone, and fits app2 when Duplicitous installs it.
+# Avoidant's table: this app is its own factory app when flashed
+# standalone, and fits app2 when Avoidant installs it.
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
@@ -37,7 +37,7 @@ CONFIG_FATFS_VOLUME_COUNT=2
 # .dict, so a lookup does not walk the FAT chain to its offset.
 CONFIG_FATFS_USE_FASTSEEK=y
 
-# USB host, as Duplicitous has it: drives behind a hub, the enumeration
+# USB host, as Avoidant has it: drives behind a hub, the enumeration
 # filter feckless_drivers' usbhost.c hooks, and the host's DMA buffers
 # allowed in PSRAM.
 CONFIG_USB_HOST_HUBS_SUPPORTED=y

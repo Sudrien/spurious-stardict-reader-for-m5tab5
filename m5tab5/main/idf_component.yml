@@ -2,23 +2,35 @@ dependencies:
   idf:
     version: ">=5.4.2"
 
-  # The panel, backlight and gfx text; and the I2C bus, IO expanders and
-  # touch. Pinned to tags, as in defeatist-music-player-for-m5tab5.
+  # 0017: the feckless libraries, from feckless-libs-for-m5tab5, every
+  # one at the same tag. The panel, backlight and gfx text; the I2C bus,
+  # IO expanders, touch and USB host; the card and the drive. And three
+  # the feckless libraries carry for every Tab5 project now, which were
+  # copied here from Duplicitous (Avoidant since): fatfs with exFAT (was
+  # cmake/exfat.cmake), usb_host_msc with the Tab5's DMA-sized transfers
+  # (was components/usb_host_msc), and usb_host_uac, which the drivers
+  # link (was the registry's 1.5.0, here). Pinned to tags.
   feckless_graphics_handler:
-    git: https://github.com/Sudrien/feckless-graphics-handler-for-m5tab5.git
-    version: "v0.2.7"
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_graphics_handler
+    version: "v0.3.0"
   feckless_storage_handler:
-    git: https://github.com/Sudrien/feckless-storage-handler-for-m5tab5.git
-    version: "v0.1.0"
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_storage_handler
+    version: "v0.3.0"
   feckless_drivers:
-    git: https://github.com/Sudrien/feckless-drivers-for-m5tab5.git
-    version: "v0.5.9"
-
-  # feckless_drivers builds its USB audio driver whether or not it is
-  # used, and does not name this in its own manifest. The player vendors
-  # 1.5.0 in components/; the registry has it under this name.
-  espressif/usb_host_uac: "1.5.0"
-
-  # usb_host_msc is not here: feckless_storage_handler requires it by
-  # name, and components/usb_host_msc is the player's patched 1.3.0 (its
-  # 5035/6031: transfers cut to what the Tab5's DMA memory can give).
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_drivers
+    version: "v0.3.0"
+  fatfs:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/fatfs
+    version: "v0.3.0"
+  usb_host_msc:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/usb_host_msc
+    version: "v0.3.0"
+  usb_host_uac:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/usb_host_uac
+    version: "v0.3.0"

@@ -40,19 +40,15 @@ ESP-IDF 5.4.2 or later:
 
 The standalone image flashes at 0x0 and boots the reader as the factory
 app. `build/spurious.bin` is the app alone, for
-[Duplicitous](https://github.com/Sudrien/duplicitous-for-m5tab5) to
-install into app2 -- the partition table is Duplicitous's.
+[Avoidant](https://github.com/Sudrien/avoidant-launcher-for-m5tab5) to
+install into app2 -- the partition table is Avoidant's.
 
-The board bring-up is Duplicitous's: the panel, backlight, text, IO
-expanders, touch and USB host from
-[feckless-graphics-handler-for-m5tab5](https://github.com/Sudrien/feckless-graphics-handler-for-m5tab5)
-and
-[feckless-drivers-for-m5tab5](https://github.com/Sudrien/feckless-drivers-for-m5tab5),
-and the card and the drive from
-[feckless-storage-handler-for-m5tab5](https://github.com/Sudrien/feckless-storage-handler-for-m5tab5),
-all pinned in `main/idf_component.yml`. exFAT is built in as there:
-`cmake/exfat.cmake` runs `tools/enable_exfat.sh` at configure time; set
-`TAB5_NO_EXFAT` in the environment to build FAT32 only.
+The board bring-up is Avoidant's: the panel, backlight, text, IO
+expanders, touch and USB host, and the card and the drive, from
+[feckless-libs-for-m5tab5](https://github.com/Sudrien/feckless-libs-for-m5tab5)'s
+components, all pinned at one tag in `main/idf_component.yml`. exFAT is
+built in: feckless-libs' `fatfs` patches this IDF's FatFs at configure
+time; `CONFIG_FECKLESS_FATFS_EXFAT=n` builds FAT32 only.
 
 `main/stardict.c` and `main/dmeta.c` are plain C. `test/stardict` builds
 them on a host:
@@ -66,8 +62,9 @@ Python Metaphone package over every headword (`pip install metaphone`).
 
 ## Licences other than MIT
 
-- `components/usb_host_msc`: Espressif's esp-usb MSC driver, Apache-2.0,
-  as Duplicitous vendors it (its own licence file and change notes inside).
+- feckless-libs' `usb_host_msc` and `usb_host_uac`: Espressif's esp-usb
+  class drivers, Apache-2.0, with the Tab5's fixes (their own licence
+  files and change notes inside).
 - `components/tinfl`: the inflater from miniz 3.0.2, MIT (its own
   `LICENSE`). The ESP32-P4's ROM has none.
 - The exFAT fatfs is IDF's component (Apache-2.0) around ChaN's FatFs.

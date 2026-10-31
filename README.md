@@ -4,4 +4,4 @@ Use the feckless libraries
 
 Double metaphone fuzzy ssearch
 
-Add to duplicitous flasher and m5stack burner
+Add to the Avoidant flasher and m5stack burner

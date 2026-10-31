@@ -2,7 +2,7 @@
  * sd_io.h -- random reads from a dictionary's .dict or .dict.dz.
  *
  * Offsets are 64 bits. On the Tab5 (sd_io_fatfs.c) the file is read
- * through FatFs itself, as aimless-moving-map's ffread.c does: off_t is
+ * through FatFs itself, as errant-moving-map's ffread.c does: off_t is
  * 32 bits on ESP-IDF, so fseek() through the VFS stops at 2 GiB, while
  * f_lseek() takes FSIZE_t, 64 bits with exFAT. On a host
  * (test/stardict/sd_io_stdio.c) it is plain fseeko().

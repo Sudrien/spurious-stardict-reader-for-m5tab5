@@ -1,6 +1,6 @@
-# The same table as duplicitous-for-m5tab5: factory, app2 (ota_0), and the
+# The same table as avoidant-launcher-for-m5tab5: factory, app2 (ota_0), and the
 # Tab5 projects' app3M_fat9M_16MB ffat and coredump at their offsets.
-# Standalone, this app is factory; installed by Duplicitous, it is app2.
+# Standalone, this app is factory; installed by Avoidant, it is app2.
 #
 # Name,   Type, SubType, Offset,   Size,     Flags
 nvs,      data, nvs,      0x9000,   0x5000,

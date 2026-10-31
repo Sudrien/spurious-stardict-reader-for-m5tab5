@@ -166,3 +166,25 @@
   `sd_io_fatfs.c` compiles with -Werror against IDF v6.0's ff.h (FAT32
   and exFAT settings) and feckless-storage v0.1.0's headers, ESP log and
   heap calls stubbed. Not built on IDF; not run on the Tab5.
+- **0017 feckless-libs v0.3.0: the libraries, exFAT and the class
+  drivers from one place.** The four feckless repositories this pinned
+  (graphics handler v0.2.7, storage handler v0.1.0, drivers v0.5.9) are
+  archived; their code is components of feckless-libs-for-m5tab5, and
+  the manifest names them there at v0.3.0 -- the drivers v0.5.10 and
+  graphics v0.2.9 underneath, whose inits may run twice. With them come
+  three that were copied here from Duplicitous: fatfs, IDF's FatFs with
+  exFAT patched at configure time (in place of cmake/exfat.cmake,
+  cmake/idfcopy.cmake and tools/enable_exfat.sh, deleted, with the
+  .gitignore line for components/fatfs); usb_host_msc, the same patched
+  1.3.0 that was components/usb_host_msc, deleted; and usb_host_uac, in
+  place of the registry's 1.5.0. TAB5_NO_EXFAT is
+  CONFIG_FECKLESS_FATFS_EXFAT=n now. Duplicitous is Avoidant
+  (avoidant-launcher-for-m5tab5) and aimless-moving-map
+  errant-moving-map: the READMEs, CLAUDE.md and the comments that named
+  them follow (sdkconfig.defaults' changes are comments; no `rm
+  sdkconfig` for them). Built in m5tab5/ with ESP-IDF release/v6.1 and
+  the component manager off, against feckless-libs v0.3.0: `fatfs
+  (feckless): exFAT`, no warnings, spurious.bin 0xebb20 bytes;
+  `make -C m5tab5/test/stardict` builds. `dependencies.lock` not
+  updated. After applying: delete m5tab5/components/fatfs and build/,
+  and `rm sdkconfig`. Not on a Tab5.

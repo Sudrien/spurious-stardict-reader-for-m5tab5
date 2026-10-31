@@ -9,7 +9,7 @@
  * "sounds" on, the list is instead the words that sound like what was
  * typed (Double Metaphone, main/dmeta.c).
  *
- * The board bring-up is Duplicitous's (duplicitous-for-m5tab5): the
+ * The board bring-up is Avoidant's (avoidant-launcher-for-m5tab5): the
  * feckless components for the panel, touch, USB host and storage.
  *
  * SPDX-License-Identifier: MIT
@@ -434,7 +434,7 @@ void app_main(void)
     show();
     lcd_backlight_set(BRIGHTNESS);
 
-    /* As Duplicitous: the USB host before storage, which registers mass
+    /* As Avoidant: the USB host before storage, which registers mass
      * storage as a class with it; then the port, which powers USB-A. */
     ESP_ERROR_CHECK(usbhost_init(tab5io_exp2()));
     /* storage polls the slot every second, and each poll with no card

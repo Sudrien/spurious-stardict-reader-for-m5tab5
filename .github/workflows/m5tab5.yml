@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 name: Build the M5Stack Tab5 firmware
 
-# duplicitous-for-m5tab5's m5tab5.yml with the names changed: a tag
+# avoidant-launcher-for-m5tab5's m5tab5.yml (Duplicitous's, as was) with the names changed: a tag
 # builds and releases; a manual run builds any ref, with a choice of
 # ESP-IDF, and releases only when asked. The firmware is in m5tab5/, so
 # every IDF step runs from there. Each release carries the standalone
