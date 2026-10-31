@@ -10,27 +10,39 @@ dependencies:
   # cmake/exfat.cmake), usb_host_msc with the Tab5's DMA-sized transfers
   # (was components/usb_host_msc), and usb_host_uac, which the drivers
   # link (was the registry's 1.5.0, here). Pinned to tags.
+  # 0018: the feckless ABI and its storage section, at v0.5.0 with the
+  # rest -- storage version 2, with fast seek (feckless-libs' 5003). The
+  # reader is an ELF built against them (elf/); the .bin links both and
+  # runs it, as a launcher does.
+  feckless_abi:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_abi
+    version: "v0.5.0"
+  feckless_abi_storage:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_abi_storage
+    version: "v0.5.0"
   feckless_graphics_handler:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_graphics_handler
-    version: "v0.3.0"
+    version: "v0.5.0"
   feckless_storage_handler:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_storage_handler
-    version: "v0.3.0"
+    version: "v0.5.0"
   feckless_drivers:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_drivers
-    version: "v0.3.0"
+    version: "v0.5.0"
   fatfs:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/fatfs
-    version: "v0.3.0"
+    version: "v0.5.0"
   usb_host_msc:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/usb_host_msc
-    version: "v0.3.0"
+    version: "v0.5.0"
   usb_host_uac:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/usb_host_uac
-    version: "v0.3.0"
+    version: "v0.5.0"

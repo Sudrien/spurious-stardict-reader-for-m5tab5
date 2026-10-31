@@ -48,3 +48,16 @@ CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=1024
 
 CONFIG_FREERTOS_HZ=1000
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# 0018: the reader is an ELF the firmware loads (elf/, and feckless_abi's
+# checks, which fail the build without the first three). esp_elf puts it
+# in PSRAM, which the P4 can execute from; memory protection off, as
+# elf_loader's PSRAM examples have it; the 256 KB L2 for code running
+# from PSRAM, as Lothesome and Avoidant have it. CONFIG_UAC_FREQ_NUM_MAX,
+# which feckless_abi warns without, is compiled into the USB audio
+# driver the drivers link, though nothing here uses USB audio.
+CONFIG_ELF_LOADER_LOAD_PSRAM=y
+CONFIG_ESP_SYSTEM_MEMPROT_FEATURE=n
+CONFIG_CACHE_L2_CACHE_256KB=y
+CONFIG_CACHE_L2_CACHE_LINE_128B=y
+CONFIG_UAC_FREQ_NUM_MAX=8

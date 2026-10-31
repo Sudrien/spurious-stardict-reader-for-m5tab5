@@ -188,3 +188,21 @@
   `make -C m5tab5/test/stardict` builds. `dependencies.lock` not
   updated. After applying: delete m5tab5/components/fatfs and build/,
   and `rm sdkconfig`. Not on a Tab5.
+- **0018 The reader as an ELF on the feckless ABI, and a standalone
+  .bin.** Lothesome's and Unprofitable Mahjong's shape. `elf/` builds
+  main.c, stardict.c, sd_io_fatfs.c and dmeta.c into
+  spurious_reader.app.elf, tinfl linked in, everything else taken from
+  a launcher: the feckless ABI and its storage section, version 2 --
+  fast seek, so sd_io_fatfs.c keeps its cluster map (feckless-libs'
+  5003, v0.5.0). app_main() is the ELF's, starts with
+  `feckless_abi_require()` and `feckless_abi_require_storage()`, and
+  finds storage up: NVS, the USB host and storage moved to
+  `main/standalone.c`, the .bin's app_main, which brings them up in
+  Avoidant's order and runs the embedded ELF. Every feckless component
+  at v0.5.0, with feckless_abi and feckless_abi_storage;
+  sdkconfig.defaults has what feckless_abi requires and recommends. CI
+  publishes the .elf with the two .bins. Built in m5tab5/ with ESP-IDF
+  v6.1 and the component manager off: `feckless_abi: 72 symbols, all
+  in feckless_abi_v1 + feckless_abi_storage_v2`, an ELF of 34564 bytes,
+  spurious.bin 0x135100, no warnings. `dependencies.lock` not updated;
+  `rm sdkconfig`. Not on a Tab5.

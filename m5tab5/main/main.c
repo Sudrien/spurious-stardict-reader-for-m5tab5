@@ -12,6 +12,12 @@
  * The board bring-up is Avoidant's (avoidant-launcher-for-m5tab5): the
  * feckless components for the panel, touch, USB host and storage.
  *
+ * 0018: the reader is an ELF built against the feckless ABI (../elf/),
+ * with the card and the drive from its storage section. This app_main()
+ * is what a launcher such as Avoidant runs, and finds storage up;
+ * standalone.c is the .bin's, which brings NVS, the USB host and storage
+ * up as a launcher does, then loads it.
+ *
  * SPDX-License-Identifier: MIT
  */
 #include <dirent.h>
@@ -23,13 +29,13 @@
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "feckless_abi.h"            /* 0018 */
+#include "feckless_abi_storage.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "nvs_flash.h"
 
 #include "storage.h"
 #include "storage_io.h"
-#include "usbhost.h"
 
 #include "gfx.h"
 #include "lcd.h"
@@ -412,17 +418,16 @@ static void search(sd_dict_t *d, storage_id_t vol)
 
 void app_main(void)
 {
+    /* 0018: tie the ELF to the launcher's ABI and its storage section; a
+     * launcher without either refuses it before any of this runs. */
+    feckless_abi_require();
+    feckless_abi_require_storage();
+
     /* Which build this is: the version is the tag or ref CI wrote to
      * version.txt, else git describe. */
     const esp_app_desc_t *app = esp_app_get_description();
     ESP_LOGI(TAG, "=== Spurious %s, built %s %s, ESP-IDF %s ===",
              app->version, app->date, app->time, app->idf_ver);
-
-    esp_err_t e = nvs_flash_init();
-    if (e == ESP_ERR_NVS_NO_FREE_PAGES || e == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        nvs_flash_erase();
-        nvs_flash_init();
-    }
 
     ESP_ERROR_CHECK(tab5io_init());     /* bus, expanders, LCD_RST/TP_RST released */
     esp_lcd_panel_handle_t panel;
@@ -434,24 +439,8 @@ void app_main(void)
     show();
     lcd_backlight_set(BRIGHTNESS);
 
-    /* As Avoidant: the USB host before storage, which registers mass
-     * storage as a class with it; then the port, which powers USB-A. */
-    ESP_ERROR_CHECK(usbhost_init(tab5io_exp2()));
-    /* storage polls the slot every second, and each poll with no card
-     * logs three errors from IDF's sdmmc and FAT layers and a line from
-     * SD_HOST. tab5_storage logs the mount when there is one; that says
-     * enough. */
-    esp_log_level_set("sdmmc_common", ESP_LOG_NONE);
-    esp_log_level_set("vfs_fat_sdmmc", ESP_LOG_NONE);
-    esp_log_level_set("SD_HOST", ESP_LOG_WARN);
-    storage_io_init();
-    static const storage_usb_t usb = {
-        .register_class = usbhost_register_class,
-        .set_power      = usbhost_set_power,
-        .powered        = usbhost_powered,
-    };
-    ESP_ERROR_CHECK(storage_init(&usb));
-    usbhost_start();
+    /* 0018: the USB host and storage are the launcher's, already up --
+     * standalone.c's when this is the .bin. */
 
     message("Looking for dictionaries", "", C_DIM);
     vTaskDelay(pdMS_TO_TICKS(1500));    /* the card mounts on storage's poll task */

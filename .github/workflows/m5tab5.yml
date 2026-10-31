@@ -101,12 +101,18 @@ jobs:
           idf.py merge-bin
           mv build/merged-binary.bin "build/spurious_${NAME}_m5tab5_standalone.bin"
           mv build/spurious.bin "build/spurious_${NAME}_m5tab5.bin"
+          # 0018: the reader alone, for a launcher (Avoidant) to run with
+          # no install. The .bins already contain this ELF; what it may take
+          # from a launcher is feckless_abi's and its storage section's, at
+          # the tag in main/idf_component.yml.
+          cp build/elf/spurious_reader.app.elf "build/spurious_${NAME}_m5tab5.elf"
           # the checksums, published with the binaries
           (cd build && sha256sum "spurious_${NAME}_m5tab5_standalone.bin" \
-                                 "spurious_${NAME}_m5tab5.bin" > "spurious_${NAME}_m5tab5.sha256")
+                                 "spurious_${NAME}_m5tab5.bin" \
+                                 "spurious_${NAME}_m5tab5.elf" > "spurious_${NAME}_m5tab5.sha256")
           cat "build/spurious_${NAME}_m5tab5.sha256"
 
-      # A signed record that these two files, by their SHA-256, were
+      # A signed record that these three files, by their SHA-256, were
       # built by this workflow from this commit. It is stored with the
       # repository, not in the files: the .bins are byte for byte what
       # they were and flash as before. Every run attests, not only a
@@ -120,6 +126,7 @@ jobs:
           subject-path: |
             m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5_standalone.bin
             m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.bin
+            m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.elf
 
       - name: Archive build output artifacts
         uses: actions/upload-artifact@v4
@@ -128,6 +135,7 @@ jobs:
           path: |
             m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5_standalone.bin
             m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.bin
+            m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.elf
             m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.sha256
 
       # The lock the component manager resolved, to be read and
@@ -157,4 +165,5 @@ jobs:
           files: |
             m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5_standalone.bin
             m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.bin
+            m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.elf
             m5tab5/build/spurious_${{ steps.ver.outputs.name }}_m5tab5.sha256

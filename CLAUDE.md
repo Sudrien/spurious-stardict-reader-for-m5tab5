@@ -70,7 +70,12 @@ next patch's entry, not into the old one.
 ESP-IDF (>= 5.4.2) firmware, on the feckless components from
 feckless-libs-for-m5tab5, all at one tag in `main/idf_component.yml` --
 exFAT and usb_host_msc among them since 0017. Its partitions and CI are
-Avoidant's (avoidant-launcher-for-m5tab5, Duplicitous as was), copied. `main/stardict.c` is plain C:
+Avoidant's (avoidant-launcher-for-m5tab5, Duplicitous as was), copied. The reader is an ELF built against the feckless ABI (`elf/`, 0018),
+with the card and the drive from its storage section; `main/standalone.c`
+is the .bin's app_main, which brings storage up and loads it. A call
+from the reader to anything outside the ABI fails the build: link it
+into the ELF (`ELF_COMPONENTS` in `elf/CMakeLists.txt`, as tinfl is),
+or it is a patch against feckless-libs first. `main/stardict.c` is plain C:
 `test/stardict` builds it on a host, and a change to it runs there first.
 
 - **Every dependency is pinned to a tag.**
