@@ -45,6 +45,7 @@
 #include "touch.h"
 
 #include "stardict.h"
+#include "libversions.h"         /* 0024: generated, feckless_libversions() in elf/ */
 
 static const char *TAG = "spurious";
 
@@ -438,7 +439,9 @@ static void draw_keyboard(void)
  * another without restarting. The panel sits over the word list (and the
  * keyboard, with enough dictionaries); a tap on the switch flips it, on a
  * dictionary opens it, and anywhere else, the gear included, puts the
- * panel away. */
+ * panel away. 0024: at the bottom, the libraries this reader was built
+ * from, with their versions and licences (libversions.h), as many as fit;
+ * a tap on them shows the next page. */
 #define GEAR_W      HEAD_H              /* the square it is tapped in */
 #define PANEL_X     PAD
 #define PANEL_Y     (HEAD_H + 16)
@@ -448,6 +451,9 @@ static void draw_keyboard(void)
 #define PANEL_TITLE (DLINE + 24)        /* "Dictionaries" */
 #define PANEL_MAX_Y (H - PAD)
 #define SWITCH_W    150
+#define LIB_TITLE   PANEL_TITLE         /* 0024: "Libraries" */
+#define LIB_ROW     DLINE               /* a library's line: one, or two if its name is long */
+#define LIB_MIN     6                   /* library lines kept from the dictionaries */
 
 /* The path of the dictionary that is open, and the one chosen from the
  * panel for app_main() to open next (empty: none). */
@@ -483,20 +489,88 @@ static int panel_list_y(void)
     return PANEL_Y + PANEL_ROW + PANEL_NOTE + PANEL_TITLE;
 }
 
+/* 0024: with LIB_MIN library rows kept below them. */
 static int panel_rows(void)
 {
-    int fit = (PANEL_MAX_Y - panel_list_y()) / ROW_H;
+    int fit = (PANEL_MAX_Y - panel_list_y() - LIB_TITLE - LIB_MIN * LIB_ROW) / ROW_H;
+    if (fit < 0) fit = 0;
     return ndicts < fit ? ndicts : fit;
+}
+
+/* 0024: the libraries' section, under the dictionaries. Three columns --
+ * module, checkout, licence -- the last two as wide as their longest
+ * entry and against the right edge. A module whose name does not fit
+ * before them has its own line, and its checkout and licence go on the
+ * next: so a library takes one line or two, and a page is as many as fit
+ * in the lines there are. s_lib_first is the page's first. */
+static int s_lib_first;
+
+#define LIB_LEFT    (PANEL_X + PAD)
+#define LIB_RIGHT   (PANEL_X + PANEL_W - PAD)
+#define LIB_GAP     24
+
+static int s_lib_x1, s_lib_x2;          /* the checkout's and licence's columns */
+
+static void lib_columns(void)
+{
+    if (s_lib_x1) return;
+    int cw1 = 0, cw2 = 0;
+    for (int i = 0; i < LIBVERSIONS_COUNT; i++) {
+        int w1 = gfx_text_w(k_libversions[i].checkout, DSCALE);
+        int w2 = gfx_text_w(k_libversions[i].licence, DSCALE);
+        if (w1 > cw1) cw1 = w1;
+        if (w2 > cw2) cw2 = w2;
+    }
+    s_lib_x2 = LIB_RIGHT - cw2;
+    s_lib_x1 = s_lib_x2 - LIB_GAP - cw1;
+    if (s_lib_x1 < LIB_LEFT + 48) s_lib_x1 = LIB_LEFT + 48;   /* indented under the name */
+    if (s_lib_x2 < s_lib_x1 + cw1 + LIB_GAP) s_lib_x2 = s_lib_x1 + cw1 + LIB_GAP;
+}
+
+/* The lines library i takes: one if its name fits before the columns. */
+static int lib_lines(int i)
+{
+    lib_columns();
+    return LIB_LEFT + gfx_text_w(k_libversions[i].module, DSCALE) + LIB_GAP <= s_lib_x1 ? 1 : 2;
+}
+
+static int panel_lib_y(void)
+{
+    return panel_list_y() + panel_rows() * ROW_H;
+}
+
+/* The lines the section has: what is left of the screen, or fewer if
+ * every library fits in fewer. */
+static int lib_space(void)
+{
+    int fit = (PANEL_MAX_Y - (panel_lib_y() + LIB_TITLE)) / LIB_ROW, all = 0;
+    for (int i = 0; i < LIBVERSIONS_COUNT; i++) all += lib_lines(i);
+    return all < fit ? all : fit;
+}
+
+/* How many libraries, from first, fit in the section's lines. */
+static int lib_shown(int first)
+{
+    int lines = lib_space(), n = 0;
+    for (int i = first; i < LIBVERSIONS_COUNT && lines >= lib_lines(i); i++, n++)
+        lines -= lib_lines(i);
+    return n;
+}
+
+static bool lib_paged(void)
+{
+    return lib_shown(0) < LIBVERSIONS_COUNT;
 }
 
 static int panel_h(void)
 {
-    return panel_list_y() + panel_rows() * ROW_H - PANEL_Y;
+    return panel_lib_y() + LIB_TITLE + lib_space() * LIB_ROW + PAD / 2 - PANEL_Y;
 }
 
 #define PANEL_SWITCH    (-1)
 #define PANEL_INSIDE    (-2)        /* on the panel, on nothing */
 #define PANEL_OUTSIDE   (-3)
+#define PANEL_LIBS      (-4)        /* 0024: the libraries: the next page */
 
 /* What a tap at (x, y) is on: a dictionary's index, or one of the above. */
 static int panel_hit(int x, int y)
@@ -505,8 +579,39 @@ static int panel_hit(int x, int y)
         return PANEL_OUTSIDE;
     if (y < PANEL_Y + PANEL_ROW) return PANEL_SWITCH;
     if (y < panel_list_y()) return PANEL_INSIDE;
+    if (y >= panel_lib_y()) return lib_paged() ? PANEL_LIBS : PANEL_INSIDE;
     int i = (y - panel_list_y()) / ROW_H;
     return i < panel_rows() ? i : PANEL_INSIDE;
+}
+
+/* 0024: the libraries, from s_lib_first, as panel_lib_y()'s comment says;
+ * "1-7 of 21, tap for more" by the title when they are paged. */
+static void draw_libs(void)
+{
+    lib_columns();
+    const int y = panel_lib_y(), shown = lib_shown(s_lib_first);
+    gfx_fill_rect(PANEL_X, y, PANEL_W, 2, C_RULE);
+    gfx_draw_text(LIB_LEFT, y + 16, "Libraries", DSCALE, PANEL_W - 2 * PAD, C_DIM);
+    if (lib_paged()) {
+        char page[48];
+        snprintf(page, sizeof page, "%d-%d of %d, tap for more", s_lib_first + 1,
+                 s_lib_first + shown, LIBVERSIONS_COUNT);
+        gfx_draw_text(LIB_RIGHT - gfx_text_w(page, DSCALE), y + 16, page, DSCALE,
+                      LIB_RIGHT - LIB_LEFT, C_DIM);
+    }
+    int ly = y + LIB_TITLE;
+    for (int i = s_lib_first; i < s_lib_first + shown; i++) {
+        const libv_t *e = &k_libversions[i];
+        if (lib_lines(i) == 1) {
+            gfx_draw_text(LIB_LEFT, ly, e->module, DSCALE, s_lib_x1 - LIB_GAP - LIB_LEFT, C_TEXT);
+        } else {
+            gfx_draw_text(LIB_LEFT, ly, e->module, DSCALE, LIB_RIGHT - LIB_LEFT, C_TEXT);
+            ly += LIB_ROW;
+        }
+        gfx_draw_text(s_lib_x1, ly, e->checkout, DSCALE, s_lib_x2 - LIB_GAP - s_lib_x1, C_DIM);
+        gfx_draw_text(s_lib_x2, ly, e->licence, DSCALE, LIB_RIGHT - s_lib_x2, C_DIM);
+        ly += LIB_ROW;
+    }
 }
 
 static void draw_panel(bool sounds)
@@ -537,6 +642,7 @@ static void draw_panel(bool sounds)
                       PANEL_W - 2 * PAD, C_TEXT);
         gfx_fill_rect(PANEL_X, ry + ROW_H - 2, PANEL_W, 2, C_RULE);
     }
+    draw_libs();
 }
 
 /* app_main()'s next dictionary: the one chosen from the panel, once, in a
@@ -657,6 +763,10 @@ static void search(sd_dict_t *d, storage_id_t vol)
                 snprintf(s_chosen, sizeof s_chosen, "%s", dicts[hit]);
                 ESP_LOGI(TAG, "changing to %s", base(s_chosen));
                 return;
+            } else if (hit == PANEL_LIBS) {
+                s_lib_first += lib_shown(s_lib_first);  /* 0024: the next page */
+                if (s_lib_first >= LIBVERSIONS_COUNT) s_lib_first = 0;
+                ESP_LOGI(TAG, "libraries from %d of %d", s_lib_first + 1, LIBVERSIONS_COUNT);
             } else if (hit != PANEL_INSIDE) {
                 panel = false;
             }
@@ -664,6 +774,7 @@ static void search(sd_dict_t *d, storage_id_t vol)
         }
         if (in_gear(x, y)) {
             scan();             /* what is on the card and the drive now */
+            s_lib_first = 0;    /* 0024: the libraries from the first */
             panel = true;
             continue;
         }

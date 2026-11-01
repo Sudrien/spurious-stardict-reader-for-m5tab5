@@ -345,3 +345,32 @@
   keyboard, at rest and with shift once, and looked at. `test/scrollbar`
   passes. The keyboard's own checks are feckless-libs'. Not built with
   ESP-IDF, not on a Tab5.
+- **0024 The libraries, at the bottom of the settings.** Under the
+  dictionaries in the gear's panel: every library this reader was built
+  from, with its checkout and licence, from `libversions.h` --
+  feckless-libs' `feckless_libversions` (its 8012-8014, at v0.8.7), which
+  `elf/CMakeLists.txt` calls after `feckless_abi_elf()`. It reads the lock,
+  the fonts the graphics handler compiles in and this repository's commit;
+  tinfl, which has no manifest, is named as an EXTRA row (miniz 3.0.2,
+  MIT). Three columns, checkout and licence against the right edge; a
+  library whose name does not fit before them takes a second line for
+  them. As many as fit; when they do not all fit, "1-17 of 21, tap for
+  more" by the title, a tap on the list shows the next page
+  (`libraries from 18 of 21` in the log), and each time the gear opens the
+  panel it starts at the first. Six lines are kept for the libraries, so
+  the dictionaries shown go from 11 at most to 7; the rest are not shown,
+  as before. Every pin moves to v0.8.7, with `feckless_libversions` added
+  -- a header, nothing linked into the ELF -- and main requires it in the
+  ELF build. v0.8.7 also has feckless-libs' 8015, Ark12 with IPA, for the
+  pronunciations.
+  This changes `main/idf_component.yml`: `dependencies.lock` re-resolves
+  on the next build; read its diff before committing it. v0.8.7 must be
+  tagged first. No `sdkconfig.defaults` change.
+  *Checked:* main.c compiles on a host (gcc, `-Wall -Wextra`, IDF
+  stubbed) against feckless-libs' headers with 8012-8015, with no
+  warning from the new code. The panel was drawn on a host by this
+  file's own functions with feckless-libs' real gfx.c and Ark12, with a
+  `libversions.h` the generator wrote from this tree's lock and one as a
+  board build would have it (21 rows, licences and fonts), at 2 and 11
+  dictionaries, both pages, and looked at; the libraries' tap gives the
+  next page. Not built with ESP-IDF, not on a Tab5.

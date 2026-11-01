@@ -60,3 +60,12 @@ project(spurious_reader)
 # older miniz cannot bind its symbols (components/tinfl, 0011).
 set(ELF_COMPONENTS tinfl feckless_keyboard)
 feckless_abi_elf(spurious_reader)
+
+# 0024: libversions.h, the settings panel's list of libraries, from the
+# lock, the fonts and this repository's commit (feckless-libs'
+# feckless_libversions). tinfl has no manifest for it to read, so it is
+# named here: miniz 3.0.2's, MIT (components/tinfl). Writes
+# libversions.tsv beside the header, for the README or a release.
+idf_component_get_property(main_lib main COMPONENT_LIB)
+feckless_libversions(${main_lib} NAME "Spurious StarDict Reader" LICENSE MIT
+                     EXTRA "miniz tinfl (vendored)|3.0.2|MIT")
