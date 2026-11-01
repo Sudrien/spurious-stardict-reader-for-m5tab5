@@ -195,29 +195,52 @@ typedef enum {
     T_NONE,                 /* nothing within the time */
     T_TAP,                  /* down and up, at where it went down: wait_tap()'s */
     T_DRAG,                 /* on the scrollbar, at (x, y) now */
-    T_DROP,                 /* off it again */
+    T_DROP,                 /* off it again, or the end of a pan */
+    T_PAN,                  /* 0026: a finger dragging the content, s_pan_dy since the last */
 } touch_ev_t;
 
 static bool s_drag;         /* a finger on the scrollbar, between calls */
 
+/* 0026: dragging the content itself. A finger that goes down between
+ * s_pan_top and s_pan_bot (set by the screen; both 0, the default, is
+ * nowhere) and moves PAN_SLOP or more up or down is a pan, not a tap:
+ * reported at each position it moves to with s_pan_dy, the pixels since
+ * the last report (down the screen positive), and T_DROP when it lifts.
+ * Less than PAN_SLOP and it is still a tap where it went down. */
+#define PAN_SLOP    16
+static int s_pan_top, s_pan_bot;
+static bool s_pan;          /* a finger panning, between calls */
+static int s_pan_dy;
+
 /* wait_tap(), and the scrollbar: a finger that goes down on sb's grab
  * zone is a drag, reported at each position it moves to and once more
- * when it lifts, instead of a tap. sb may be NULL. */
+ * when it lifts, instead of a tap. sb may be NULL. 0026: and the pan. */
 static touch_ev_t wait_touch(const sbar_t *sb, int *x, int *y, int ms)
 {
-    static int drag_y;
+    static int drag_y, down_y;
     int64_t until = esp_timer_get_time() + (int64_t)ms * 1000;
     bool down = false;
     for (;;) {
         int tx, ty;
         bool now = touch_get(&tx, &ty);
-        if (s_drag) {
-            if (!now) { s_drag = false; return T_DROP; }
-            if (ty != drag_y) { drag_y = ty; *x = tx; *y = ty; return T_DRAG; }
+        if (s_drag || s_pan) {
+            if (!now) { s_drag = s_pan = false; return T_DROP; }
+            if (ty != drag_y) {
+                s_pan_dy = ty - drag_y;
+                drag_y = ty; *x = tx; *y = ty;
+                return s_drag ? T_DRAG : T_PAN;
+            }
         } else {
             if (now && !down) {
-                down = true; *x = tx; *y = ty;
+                down = true; *x = tx; *y = ty; down_y = ty;
                 if (sbar_grab(sb, tx, ty)) { s_drag = true; drag_y = ty; return T_DRAG; }
+            }
+            int moved = ty > down_y ? ty - down_y : down_y - ty;
+            if (now && down && moved >= PAN_SLOP && down_y >= s_pan_top && down_y < s_pan_bot) {
+                s_pan = true;
+                s_pan_dy = ty - down_y;
+                drag_y = ty; *x = tx; *y = ty;
+                return T_PAN;
             }
             if (!now && down) return T_TAP;
             if (!down && esp_timer_get_time() > until) return T_NONE;
@@ -338,45 +361,60 @@ static bool define(sd_dict_t *d, uint32_t i, storage_id_t vol)
         lines[n++] = (line_t){ s, (uint16_t)(len > 0xffff ? 0xffff : len) };
         s = next;
     }
-    int top = 0;
+    /* 0026: scrolled by the pixel, so a finger dragging the text moves it
+     * with the finger; Up and Down move a screen, the scrollbar anywhere.
+     * The text is drawn first and the header and the keys over it, which
+     * is the clipping. */
+    const int vy = HEAD_H + 20, vh = DROWS * DLINE, fy = H - FOOT_H, bw = W / 3;
+    const int ch = (int)n * DLINE, max = ch > vh ? ch - vh : 0;
+    int top = 0;                /* pixels scrolled */
     bool ok = true;
     char buf[512];
     for (;;) {
+        if (top > max) top = max;
+        if (top < 0) top = 0;
         gfx_fill_rect(0, 0, W, H, C_BG);
-        char sub[96];
-        snprintf(sub, sizeof sub, "%s  %d/%d", sd_name(d), n ? top / DROWS + 1 : 1,
-                 (int)((n + DROWS - 1) / DROWS) ? (int)((n + DROWS - 1) / DROWS) : 1);
-        header(sub, sd_word(d, i));
-        for (int r = 0; r < DROWS && top + r < (int)n; r++) {
-            const line_t *l = &lines[top + r];
+        for (int r = top / DLINE; r < (int)n; r++) {
+            int ly = vy + r * DLINE - top;
+            if (ly >= vy + vh) break;
+            const line_t *l = &lines[r];
             size_t m = l->n < sizeof buf - 1 ? l->n : sizeof buf - 1;
             memcpy(buf, l->s, m);
             buf[m] = 0;
-            gfx_draw_text(PAD, HEAD_H + 20 + r * DLINE, buf, DSCALE, W - 2 * PAD, C_TEXT);
+            gfx_draw_text(PAD, ly, buf, DSCALE, W - 2 * PAD, C_TEXT);
         }
-        sbar_t sb = { HEAD_H + 20, DROWS * DLINE, (int32_t)n, DROWS };   /* 0020 */
+        gfx_fill_rect(0, 0, W, vy, C_BG);
+        gfx_fill_rect(0, vy + vh, W, H - vy - vh, C_BG);
+        char sub[96];
+        int pages = (ch + vh - 1) / vh;
+        snprintf(sub, sizeof sub, "%s  %d/%d", sd_name(d),
+                 top >= max ? (pages ? pages : 1) : top / vh + 1, pages ? pages : 1);
+        header(sub, sd_word(d, i));
+        sbar_t sb = { vy, vh, ch, vh };     /* 0020; 0026: in pixels */
         sbar_draw(&sb, top, s_drag);
-        int fy = H - FOOT_H, bw = W / 3;
         key(0, fy, bw, FOOT_H, "Back", C_KEY);
         key(bw, fy, bw, FOOT_H, "Up", top > 0 ? C_KEY : C_RULE);
-        key(2 * bw, fy, W - 2 * bw, FOOT_H, "Down", top + DROWS < (int)n ? C_KEY : C_RULE);
+        key(2 * bw, fy, W - 2 * bw, FOOT_H, "Down", top < max ? C_KEY : C_RULE);
         show();
         int x, y;
         touch_ev_t ev;
+        s_pan_top = vy;
+        s_pan_bot = vy + vh;
         while ((ev = wait_touch(&sb, &x, &y, 250)) == T_NONE)
             if (!storage_present(vol)) { ok = false; goto out; }
         if (ev == T_DRAG) { top = (int)sbar_top(&sb, y); continue; }
+        if (ev == T_PAN) { top -= s_pan_dy; continue; }
         if (ev == T_DROP) {
-            ESP_LOGI(TAG, "scrolled to line %d of %d", top, (int)n);
+            ESP_LOGI(TAG, "scrolled to line %d of %d", top / DLINE, (int)n);
             continue;
         }
         if (y < fy) continue;
         if (x < bw) break;
-        if (x < 2 * bw) { if (top > 0) top -= DROWS; }
-        else if (top + DROWS < (int)n) top += DROWS;
-        if (top < 0) top = 0;
+        if (x < 2 * bw) top -= vh;
+        else top += vh;
     }
 out:
+    s_pan_top = s_pan_bot = 0;
     free(lines);
     free(text);
     return ok;
@@ -430,33 +468,30 @@ static void draw_keyboard(void)
     key(kb_x(9), y, kb_x(11) - kb_x(9), KEY_H, "clear", C_KEY);
 }
 
-/* ---- the gear and its panel (0021) -------------------------------------- */
+/* ---- the gear and its settings (0021) ----------------------------------- */
 
 /* The search screen's settings, behind a gear at the right of its header:
  * the switches first -- for now one, "Sounds like", which was a key in the
- * row under the keyboard and read there as a key-click setting -- and
- * under them the dictionaries on the card and the drive, to change to
- * another without restarting. The panel sits over the word list (and the
- * keyboard, with enough dictionaries); a tap on the switch flips it, on a
- * dictionary opens it, and anywhere else, the gear included, puts the
- * panel away. 0024: at the bottom, the libraries this reader was built
- * from, with their versions and licences (libversions.h), as many as fit;
- * a tap on them shows the next page. */
+ * row under the keyboard and read there as a key-click setting -- then
+ * the dictionaries on the card and the drive, to change to another without
+ * restarting, then (0024) the libraries this reader was built from, with
+ * their versions and licences (libversions.h). 0026: a screen of its own,
+ * not a panel over the word list: everything is on it, none cut off, and
+ * it scrolls -- a finger dragging it, or the scrollbar. A tap on the
+ * switch flips it, on a dictionary opens it; Back or the gear puts it
+ * away. */
 #define GEAR_W      HEAD_H              /* the square it is tapped in */
-#define PANEL_X     PAD
-#define PANEL_Y     (HEAD_H + 16)
-#define PANEL_W     (W - 2 * PAD)
-#define PANEL_ROW   (ROW_H + 12)        /* the switch's row */
-#define PANEL_NOTE  (2 * DLINE + 24)    /* what the switch does */
-#define PANEL_TITLE (DLINE + 24)        /* "Dictionaries" */
-#define PANEL_MAX_Y (H - PAD)
+#define SET_ROW     (ROW_H + 12)        /* the switch's row */
+#define SET_NOTE    (2 * DLINE + 24)    /* what the switch does */
+#define SET_TITLE   (DLINE + 24)        /* "Dictionaries", "Libraries" */
+#define SET_LEFT    PAD
+#define SET_RIGHT   (W - SCROLL_HIT_W)  /* clear of the scrollbar's grab */
 #define SWITCH_W    150
-#define LIB_TITLE   PANEL_TITLE         /* 0024: "Libraries" */
 #define LIB_ROW     DLINE               /* a library's line: one, or two if its name is long */
-#define LIB_MIN     6                   /* library lines kept from the dictionaries */
+#define LIB_GAP     24
 
 /* The path of the dictionary that is open, and the one chosen from the
- * panel for app_main() to open next (empty: none). */
+ * settings for app_main() to open next (empty: none). */
 static char s_open_path[PATH_LEN];
 static char s_chosen[PATH_LEN];
 
@@ -483,32 +518,10 @@ static bool in_gear(int x, int y)
     return y < HEAD_H && x >= W - GEAR_W;
 }
 
-/* Where the dictionary rows start, and how many of them fit. */
-static int panel_list_y(void)
-{
-    return PANEL_Y + PANEL_ROW + PANEL_NOTE + PANEL_TITLE;
-}
-
-/* 0024: with LIB_MIN library rows kept below them. */
-static int panel_rows(void)
-{
-    int fit = (PANEL_MAX_Y - panel_list_y() - LIB_TITLE - LIB_MIN * LIB_ROW) / ROW_H;
-    if (fit < 0) fit = 0;
-    return ndicts < fit ? ndicts : fit;
-}
-
-/* 0024: the libraries' section, under the dictionaries. Three columns --
- * module, checkout, licence -- the last two as wide as their longest
- * entry and against the right edge. A module whose name does not fit
- * before them has its own line, and its checkout and licence go on the
- * next: so a library takes one line or two, and a page is as many as fit
- * in the lines there are. s_lib_first is the page's first. */
-static int s_lib_first;
-
-#define LIB_LEFT    (PANEL_X + PAD)
-#define LIB_RIGHT   (PANEL_X + PANEL_W - PAD)
-#define LIB_GAP     24
-
+/* 0024: the libraries, three columns -- module, checkout, licence -- the
+ * last two as wide as their longest entry and against the right edge. A
+ * module whose name does not fit before them has its own line, and its
+ * checkout and licence go on the next. */
 static int s_lib_x1, s_lib_x2;          /* the checkout's and licence's columns */
 
 static void lib_columns(void)
@@ -521,9 +534,9 @@ static void lib_columns(void)
         if (w1 > cw1) cw1 = w1;
         if (w2 > cw2) cw2 = w2;
     }
-    s_lib_x2 = LIB_RIGHT - cw2;
+    s_lib_x2 = SET_RIGHT - cw2;
     s_lib_x1 = s_lib_x2 - LIB_GAP - cw1;
-    if (s_lib_x1 < LIB_LEFT + 48) s_lib_x1 = LIB_LEFT + 48;   /* indented under the name */
+    if (s_lib_x1 < SET_LEFT + 48) s_lib_x1 = SET_LEFT + 48;   /* indented under the name */
     if (s_lib_x2 < s_lib_x1 + cw1 + LIB_GAP) s_lib_x2 = s_lib_x1 + cw1 + LIB_GAP;
 }
 
@@ -531,118 +544,123 @@ static void lib_columns(void)
 static int lib_lines(int i)
 {
     lib_columns();
-    return LIB_LEFT + gfx_text_w(k_libversions[i].module, DSCALE) + LIB_GAP <= s_lib_x1 ? 1 : 2;
+    return SET_LEFT + gfx_text_w(k_libversions[i].module, DSCALE) + LIB_GAP <= s_lib_x1 ? 1 : 2;
 }
 
-static int panel_lib_y(void)
+/* Where each part starts, down the settings from their top (0), and how
+ * tall they are. */
+static int set_dicts_y(void) { return SET_ROW + SET_NOTE + SET_TITLE; }
+static int set_libs_y(void)  { return set_dicts_y() + (ndicts ? ndicts : 1) * ROW_H; }  /* one for "None found" */
+
+static int set_h(void)
 {
-    return panel_list_y() + panel_rows() * ROW_H;
+    int lines = 0;
+    for (int i = 0; i < LIBVERSIONS_COUNT; i++) lines += lib_lines(i);
+    return set_libs_y() + SET_TITLE + lines * LIB_ROW + PAD;
 }
 
-/* The lines the section has: what is left of the screen, or fewer if
- * every library fits in fewer. */
-static int lib_space(void)
+/* Everything, from oy: the settings' top on the screen, above the screen
+ * when they are scrolled. gfx clips at the screen's edges; the caller
+ * draws the header and Back over what runs under them. */
+static void draw_settings(int oy, bool sounds)
 {
-    int fit = (PANEL_MAX_Y - (panel_lib_y() + LIB_TITLE)) / LIB_ROW, all = 0;
-    for (int i = 0; i < LIBVERSIONS_COUNT; i++) all += lib_lines(i);
-    return all < fit ? all : fit;
-}
-
-/* How many libraries, from first, fit in the section's lines. */
-static int lib_shown(int first)
-{
-    int lines = lib_space(), n = 0;
-    for (int i = first; i < LIBVERSIONS_COUNT && lines >= lib_lines(i); i++, n++)
-        lines -= lib_lines(i);
-    return n;
-}
-
-static bool lib_paged(void)
-{
-    return lib_shown(0) < LIBVERSIONS_COUNT;
-}
-
-static int panel_h(void)
-{
-    return panel_lib_y() + LIB_TITLE + lib_space() * LIB_ROW + PAD / 2 - PANEL_Y;
-}
-
-#define PANEL_SWITCH    (-1)
-#define PANEL_INSIDE    (-2)        /* on the panel, on nothing */
-#define PANEL_OUTSIDE   (-3)
-#define PANEL_LIBS      (-4)        /* 0024: the libraries: the next page */
-
-/* What a tap at (x, y) is on: a dictionary's index, or one of the above. */
-static int panel_hit(int x, int y)
-{
-    if (x < PANEL_X || x >= PANEL_X + PANEL_W || y < PANEL_Y || y >= PANEL_Y + panel_h())
-        return PANEL_OUTSIDE;
-    if (y < PANEL_Y + PANEL_ROW) return PANEL_SWITCH;
-    if (y < panel_list_y()) return PANEL_INSIDE;
-    if (y >= panel_lib_y()) return lib_paged() ? PANEL_LIBS : PANEL_INSIDE;
-    int i = (y - panel_list_y()) / ROW_H;
-    return i < panel_rows() ? i : PANEL_INSIDE;
-}
-
-/* 0024: the libraries, from s_lib_first, as panel_lib_y()'s comment says;
- * "1-7 of 21, tap for more" by the title when they are paged. */
-static void draw_libs(void)
-{
-    lib_columns();
-    const int y = panel_lib_y(), shown = lib_shown(s_lib_first);
-    gfx_fill_rect(PANEL_X, y, PANEL_W, 2, C_RULE);
-    gfx_draw_text(LIB_LEFT, y + 16, "Libraries", DSCALE, PANEL_W - 2 * PAD, C_DIM);
-    if (lib_paged()) {
-        char page[48];
-        snprintf(page, sizeof page, "%d-%d of %d, tap for more", s_lib_first + 1,
-                 s_lib_first + shown, LIBVERSIONS_COUNT);
-        gfx_draw_text(LIB_RIGHT - gfx_text_w(page, DSCALE), y + 16, page, DSCALE,
-                      LIB_RIGHT - LIB_LEFT, C_DIM);
-    }
-    int ly = y + LIB_TITLE;
-    for (int i = s_lib_first; i < s_lib_first + shown; i++) {
-        const libv_t *e = &k_libversions[i];
-        if (lib_lines(i) == 1) {
-            gfx_draw_text(LIB_LEFT, ly, e->module, DSCALE, s_lib_x1 - LIB_GAP - LIB_LEFT, C_TEXT);
-        } else {
-            gfx_draw_text(LIB_LEFT, ly, e->module, DSCALE, LIB_RIGHT - LIB_LEFT, C_TEXT);
-            ly += LIB_ROW;
-        }
-        gfx_draw_text(s_lib_x1, ly, e->checkout, DSCALE, s_lib_x2 - LIB_GAP - s_lib_x1, C_DIM);
-        gfx_draw_text(s_lib_x2, ly, e->licence, DSCALE, LIB_RIGHT - s_lib_x2, C_DIM);
-        ly += LIB_ROW;
-    }
-}
-
-static void draw_panel(bool sounds)
-{
-    int h = panel_h();
-    gfx_fill_rect(PANEL_X - 2, PANEL_Y - 2, PANEL_W + 4, h + 4, C_RULE);
-    gfx_fill_rect(PANEL_X, PANEL_Y, PANEL_W, h, C_HEAD);
-
-    int ty = PANEL_Y + (PANEL_ROW - TEXT_H) / 2;
-    gfx_draw_text(PANEL_X + PAD, ty, "Sounds like", SCALE, PANEL_W - SWITCH_W - 3 * PAD, C_TEXT);
-    int sx = PANEL_X + PANEL_W - PAD - SWITCH_W;
-    gfx_fill_rect(sx, PANEL_Y + 14, SWITCH_W, PANEL_ROW - 28, sounds ? C_HIT_KEY : C_KEY);
+    const int sx = SET_RIGHT - SWITCH_W;
+    int ty = oy + (SET_ROW - TEXT_H) / 2;
+    gfx_draw_text(SET_LEFT, ty, "Sounds like", SCALE, sx - SET_LEFT - PAD, C_TEXT);
+    gfx_fill_rect(sx, oy + 14, SWITCH_W, SET_ROW - 28, sounds ? C_HIT_KEY : C_KEY);
     const char *v = sounds ? "on" : "off";
     gfx_draw_text(sx + (SWITCH_W - gfx_text_w(v, SCALE)) / 2, ty, v, SCALE, SWITCH_W, C_TEXT);
-    gfx_draw_para(PANEL_X + PAD, PANEL_Y + PANEL_ROW + 8,
+    gfx_draw_para(SET_LEFT, oy + SET_ROW + 8,
                   "Words that sound like what you type, for one you can say "
                   "but not spell.",
-                  DSCALE, PANEL_W - 2 * PAD, DLINE, 2, C_DIM);
+                  DSCALE, SET_RIGHT - SET_LEFT, DLINE, 2, C_DIM);
 
-    int y = PANEL_Y + PANEL_ROW + PANEL_NOTE;
-    gfx_fill_rect(PANEL_X, y, PANEL_W, 2, C_RULE);
-    gfx_draw_text(PANEL_X + PAD, y + 16, "Dictionaries", DSCALE, PANEL_W - 2 * PAD, C_DIM);
-    for (int i = 0; i < panel_rows(); i++) {
-        int ry = panel_list_y() + i * ROW_H;
-        bool open = !strcmp(dicts[i], s_open_path);
-        if (open) gfx_fill_rect(PANEL_X, ry, PANEL_W, ROW_H - 2, C_HIT_KEY);
-        gfx_draw_text(PANEL_X + PAD, ry + (ROW_H - TEXT_H) / 2, base(dicts[i]), SCALE,
-                      PANEL_W - 2 * PAD, C_TEXT);
-        gfx_fill_rect(PANEL_X, ry + ROW_H - 2, PANEL_W, 2, C_RULE);
+    int y = oy + SET_ROW + SET_NOTE;
+    gfx_fill_rect(0, y, W - SCROLL_W, 2, C_RULE);
+    gfx_draw_text(SET_LEFT, y + 16, "Dictionaries", DSCALE, SET_RIGHT - SET_LEFT, C_DIM);
+    for (int i = 0; i < ndicts; i++) {
+        int ry = oy + set_dicts_y() + i * ROW_H;
+        if (!strcmp(dicts[i], s_open_path)) gfx_fill_rect(0, ry, W - SCROLL_W, ROW_H - 2, C_HIT_KEY);
+        gfx_draw_text(SET_LEFT, ry + (ROW_H - TEXT_H) / 2, base(dicts[i]), SCALE,
+                      SET_RIGHT - SET_LEFT, C_TEXT);
+        gfx_fill_rect(0, ry + ROW_H - 2, W - SCROLL_W, 2, C_RULE);
     }
-    draw_libs();
+    if (!ndicts)
+        gfx_draw_text(SET_LEFT, oy + set_dicts_y() + (ROW_H - DTEXT_H) / 2,
+                      "None found on the card or the drive.", DSCALE, SET_RIGHT - SET_LEFT, C_DIM);
+
+    lib_columns();
+    y = oy + set_libs_y();
+    gfx_fill_rect(0, y, W - SCROLL_W, 2, C_RULE);
+    gfx_draw_text(SET_LEFT, y + 16, "Libraries", DSCALE, SET_RIGHT - SET_LEFT, C_DIM);
+    y += SET_TITLE;
+    for (int i = 0; i < LIBVERSIONS_COUNT; i++) {
+        const libv_t *e = &k_libversions[i];
+        if (y > H) break;
+        if (lib_lines(i) == 1) {
+            gfx_draw_text(SET_LEFT, y, e->module, DSCALE, s_lib_x1 - LIB_GAP - SET_LEFT, C_TEXT);
+        } else {
+            gfx_draw_text(SET_LEFT, y, e->module, DSCALE, SET_RIGHT - SET_LEFT, C_TEXT);
+            y += LIB_ROW;
+        }
+        gfx_draw_text(s_lib_x1, y, e->checkout, DSCALE, s_lib_x2 - LIB_GAP - s_lib_x1, C_DIM);
+        gfx_draw_text(s_lib_x2, y, e->licence, DSCALE, SET_RIGHT - s_lib_x2, C_DIM);
+        y += LIB_ROW;
+    }
+}
+
+enum { SET_CLOSED, SET_CHOSEN, SET_GONE };
+
+/* The settings screen, until Back or the gear (SET_CLOSED), a dictionary
+ * chosen (SET_CHOSEN, in s_chosen), or the volume gone (SET_GONE).
+ * *sounds is the switch. */
+static int settings(sd_dict_t *d, storage_id_t vol, bool *sounds)
+{
+    const int vy = HEAD_H, vh = H - FOOT_H - HEAD_H, fy = H - FOOT_H;
+    int top = 0;                /* pixels scrolled */
+    int result = SET_CLOSED;
+    for (;;) {
+        const int max = set_h() > vh ? set_h() - vh : 0;
+        if (top > max) top = max;
+        if (top < 0) top = 0;
+        gfx_fill_rect(0, 0, W, H, C_BG);
+        draw_settings(vy - top, *sounds);
+        gfx_fill_rect(0, 0, W, vy, C_BG);
+        header_w(sd_name(d), "Settings", W - PAD - GEAR_W);
+        draw_gear(W - GEAR_W / 2, HEAD_H / 2, 32, C_HIT, C_HEAD);
+        sbar_t sb = { vy, vh, set_h(), vh };   /* in pixels */
+        sbar_draw(&sb, top, s_drag);
+        key(0, fy, W, FOOT_H, "Back", C_KEY);
+        show();
+
+        int x, y;
+        touch_ev_t ev;
+        s_pan_top = vy;
+        s_pan_bot = vy + vh;
+        while ((ev = wait_touch(&sb, &x, &y, 250)) == T_NONE)
+            if (!storage_present(vol)) { result = SET_GONE; goto out; }
+        if (ev == T_DRAG) { top = (int)sbar_top(&sb, y); continue; }
+        if (ev == T_PAN) { top -= s_pan_dy; continue; }
+        if (ev == T_DROP) continue;
+        if (y >= fy || in_gear(x, y)) break;
+        if (y < vy) continue;
+        const int cy = y - vy + top;
+        if (cy < SET_ROW) {
+            *sounds = !*sounds;
+            ESP_LOGI(TAG, "sounds like: %s", *sounds ? "on" : "off");
+        } else if (cy >= set_dicts_y() && cy < set_libs_y()) {
+            int i = (cy - set_dicts_y()) / ROW_H;
+            if (i < ndicts && strcmp(dicts[i], s_open_path)) {
+                snprintf(s_chosen, sizeof s_chosen, "%s", dicts[i]);
+                ESP_LOGI(TAG, "changing to %s", base(s_chosen));
+                result = SET_CHOSEN;
+                break;
+            }
+        }
+    }
+out:
+    s_pan_top = s_pan_bot = 0;
+    return result;
 }
 
 /* app_main()'s next dictionary: the one chosen from the panel, once, in a
@@ -679,7 +697,6 @@ static void search(sd_dict_t *d, storage_id_t vol)
     static uint32_t hits[MAX_HITS];
     int nhits = 0;
     bool stale = true;          /* hits are not for q */
-    bool panel = false;         /* 0021: the gear's panel is up */
     for (;;) {
         char big[96];
         uint32_t from = 0;
@@ -730,13 +747,12 @@ static void search(sd_dict_t *d, storage_id_t vol)
             sbar_draw(&sb, (int32_t)from, s_drag);
         }
         draw_keyboard();
-        draw_gear(W - GEAR_W / 2, HEAD_H / 2, 32, panel ? C_HIT : C_TEXT, C_HEAD);
-        if (panel) draw_panel(sounds);
+        draw_gear(W - GEAR_W / 2, HEAD_H / 2, 32, C_TEXT, C_HEAD);
         show();
 
         int x, y;
         touch_ev_t ev;
-        while ((ev = wait_touch(panel ? NULL : &sb, &x, &y, 250)) == T_NONE)
+        while ((ev = wait_touch(&sb, &x, &y, 250)) == T_NONE)
             if (!storage_present(vol)) return;
         /* 0020: the alphabetical list keeps its place as an offset from
          * where q starts, so a drag to a row is that row less q's start. */
@@ -750,32 +766,17 @@ static void search(sd_dict_t *d, storage_id_t vol)
                      (long)(sounds ? scroll : (int32_t)from), (long)sb.count);
             continue;
         }
-        /* 0021: with the panel up, a tap is the switch, a dictionary, or
-         * puts the panel away. */
-        if (panel) {
-            int hit = panel_hit(x, y);
-            if (hit == PANEL_SWITCH) {
-                sounds = !sounds;
-                scroll = 0;
-                stale = true;
-                ESP_LOGI(TAG, "sounds like: %s", sounds ? "on" : "off");
-            } else if (hit >= 0 && strcmp(dicts[hit], s_open_path)) {
-                snprintf(s_chosen, sizeof s_chosen, "%s", dicts[hit]);
-                ESP_LOGI(TAG, "changing to %s", base(s_chosen));
-                return;
-            } else if (hit == PANEL_LIBS) {
-                s_lib_first += lib_shown(s_lib_first);  /* 0024: the next page */
-                if (s_lib_first >= LIBVERSIONS_COUNT) s_lib_first = 0;
-                ESP_LOGI(TAG, "libraries from %d of %d", s_lib_first + 1, LIBVERSIONS_COUNT);
-            } else if (hit != PANEL_INSIDE) {
-                panel = false;
-            }
-            continue;
-        }
+        /* 0021: the gear opens the settings; 0026: as a screen of their own. */
         if (in_gear(x, y)) {
             scan();             /* what is on the card and the drive now */
-            s_lib_first = 0;    /* 0024: the libraries from the first */
-            panel = true;
+            const bool was = sounds;
+            int how = settings(d, vol, &sounds);
+            if (how == SET_GONE) return;
+            if (how == SET_CHOSEN) return;
+            if (sounds != was) {
+                scroll = 0;
+                stale = true;
+            }
             continue;
         }
         size_t l = strlen(q);

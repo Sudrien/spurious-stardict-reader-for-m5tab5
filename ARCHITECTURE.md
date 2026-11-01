@@ -379,3 +379,35 @@
   yellow in the monitor and easy to find among the boot lines; it also
   shows at the Warn level, where it did not. Nothing else changes. Not
   built; the line's arguments are as they were.
+- **0026 Settings fill the screen, and they and a definition scroll.**
+  A finger dragging content now scrolls it: `wait_touch()` gains `T_PAN`
+  -- a finger that goes down in the band a screen names (`s_pan_top`,
+  `s_pan_bot`; none by default, so the search screen is as it was) and
+  moves 16 px (`PAN_SLOP`) or more up or down -- reported at each move
+  with `s_pan_dy`, the pixels since the last, and `T_DROP` when it lifts.
+  Less than the slop is a tap where it went down, as before; the
+  scrollbar's zone is still the scrollbar.
+  *The definition* scrolls by the pixel (`top` in pixels, the scrollbar's
+  count and rows in pixels too), the text drawn first and the header and
+  keys over it; Up and Down move a screen, as they did.
+  *The settings* are a screen of their own, `settings()`, in place of
+  0021's panel over the word list: header "Settings" with the gear lit,
+  Back across the foot. The switch, every dictionary (no longer 11 at
+  most, or 7 under 0024) and every library (no longer paged) are on it,
+  dragged or scrolled to; "None found on the card or the drive." when
+  there are none. A tap on the switch flips it, on a dictionary opens it
+  (`changing to <name>`), on Back or the gear closes it; `search()` gets
+  back closed, chosen or the volume gone. The switch moves left, clear of
+  the scrollbar's grab zone. 0024's paging, `LIB_MIN` and the panel's tap
+  map go.
+  *Checked:* `test/scrollbar`, with four new cases -- a pan past the slop
+  by its pixels each way and its drop, then a tap; a wobble short of the
+  slop is a tap where it went down; a long move outside the band is a
+  tap; the scrollbar's zone inside the band is still the scrollbar --
+  passes. main.c compiles on a host (gcc, `-Wall -Wextra`, IDF stubbed)
+  with no warning from the new code. `settings()` and `define()` were run
+  on a host -- this file's own functions, feckless-libs' real gfx.c and
+  Ark12, a scripted touch and clock -- through a drag, a long drag to the
+  end and Back, with 11 dictionaries, 21 libraries and a 30-sense
+  definition; the frames were looked at. Not built with ESP-IDF, not on
+  a Tab5.

@@ -8,6 +8,9 @@
  * list (and three million rows), that the thumb is drawn centred where a
  * finger asks, and wait_touch() through a tap, a tap in the zone that is
  * not a grab, a drag with a finger held still, a drop, and a timeout.
+ * 0026: and the pan -- a finger dragging the content in the band a screen
+ * names, by how far it moved each time; a move short of PAN_SLOP is a
+ * tap; outside the band, a tap; on the scrollbar, still the scrollbar.
  *
  *   make -C m5tab5/test/scrollbar
  */
@@ -126,6 +129,36 @@ int main(void)
     /* g) a finger held past the timeout still comes back a tap */
     now_us = 0; { step_t s[] = { { 900000, true, 100, 300 }, { 1e9, false, 0, 0 } };
       CHECK(run(s, 2, &big, &x, &y, 250) == T_TAP && now_us >= 900000, "held long"); }
+
+    /* h) 0026: a pan in the band: past the slop, each move by its pixels,
+     * then the drop; and the next touch is a tap again */
+    s_pan_top = 150; s_pan_bot = 910;
+    now_us = 0; { step_t s[] = { { 30000, true, 100, 300 }, { 60000, true, 100, 310 },
+                                  { 90000, true, 100, 340 }, { 120000, true, 100, 290 },
+                                  { 1e9, false, 0, 0 } };
+      script = s; nsteps = 5;
+      touch_ev_t e1 = wait_touch(&big, &x, &y, 250); int d1 = s_pan_dy, y1 = y;
+      touch_ev_t e2 = wait_touch(&big, &x, &y, 250); int d2 = s_pan_dy;
+      touch_ev_t e3 = wait_touch(&big, &x, &y, 250);
+      CHECK(e1 == T_PAN && d1 == 40 && y1 == 340, "pan starts past the slop: %d by %d at %d", e1, d1, y1);
+      CHECK(e2 == T_PAN && d2 == -50, "pan back up: %d by %d", e2, d2);
+      CHECK(e3 == T_DROP && !s_pan && !s_drag, "pan dropped: %d", e3);
+      step_t s2[] = { { now_us + 30000, true, 50, 200 }, { (int64_t)1e12, false, 0, 0 } };
+      CHECK(run(s2, 2, &big, &x, &y, 250) == T_TAP && x == 50, "tap after a pan"); }
+    /* i) a wobble short of the slop is still a tap, where it went down */
+    now_us = 0; { step_t s[] = { { 30000, true, 100, 300 }, { 60000, true, 103, 315 }, { 1e9, false, 0, 0 } };
+      CHECK(run(s, 3, &big, &x, &y, 250) == T_TAP && y == 300, "wobble is a tap at %d", y); }
+    /* j) going down outside the band, a long move is a tap */
+    now_us = 0; { step_t s[] = { { 30000, true, 100, 1000 }, { 60000, true, 100, 1100 }, { 1e9, false, 0, 0 } };
+      CHECK(run(s, 3, &big, &x, &y, 250) == T_TAP && y == 1000, "outside the band"); }
+    /* k) the scrollbar's zone in the band is still the scrollbar */
+    now_us = 0; { step_t s[] = { { 30000, true, 710, 300 }, { 60000, true, 710, 400 }, { 1e9, false, 0, 0 } };
+      script = s; nsteps = 3;
+      touch_ev_t e1 = wait_touch(&big, &x, &y, 250);
+      touch_ev_t e2 = wait_touch(&big, &x, &y, 250);
+      touch_ev_t e3 = wait_touch(&big, &x, &y, 250);
+      CHECK(e1 == T_DRAG && e2 == T_DRAG && y == 400 && e3 == T_DROP, "bar in the band %d %d %d", e1, e2, e3); }
+    s_pan_top = s_pan_bot = 0;
 
     if (fails) { printf("sbtest: %d failed\n", fails); return 1; }
     printf("sbtest: all passed\n");
