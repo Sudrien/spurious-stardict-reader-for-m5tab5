@@ -241,3 +241,43 @@
   What to look for: the ABI check's `feckless_abi: N symbols, all in
   feckless_abi_v1 + feckless_abi_storage_v2` with N as before (72 at
   0018), and the keyboard looking and typing as it did.
+- **0020 A scrollbar on the word list and the definition.** *0019 on a
+  Tab5,* standalone, IDF v6.1-829-g9a97f6c54ec: `=== Spurious
+  v0.1.0-pre1-2-g387b5c9-dirty ===`, the ELF from feckless-libs v0.8.5
+  loaded and ran (the first board run of 0018's ELF build too), the card's
+  `dict/wiktionary_en-simple_all_nopic_2026-10` opened with `fast seek, 4 of
+  256 table items` and `54189 words, 475 synonyms (out of order: sorted),
+  opened in 1054 ms`; the keyboard, now feckless_keyboard, looked and typed
+  as before. (Spurious logs no taps, so that last is from the screen.)
+  *This patch:* Defeatist's scrollbar (its browser.c), for the two lists
+  that page today: the word list -- 54,189 rows, ten at a time, by Up and
+  Down -- alphabetical or sounds-like, and a definition's lines. A 16 px
+  bar down the right edge in the rows' margin, its thumb the share showing
+  (24 px at least), dim at rest and white while held; a finger going down
+  in the outer 72 px over the list grabs it, and only when the list does
+  not fit, so a short list's taps are unchanged. The thumb centres on the
+  finger, as Defeatist's does: a press on the track goes there and a drag
+  scrubs. Letting go logs `scrolled to row N of M` (`line` in a
+  definition). The keyboard, the row under it and the dictionary chooser
+  are untouched.
+  `wait_tap()` saw only a finished tap, so `wait_touch()` beside it reports
+  a tap the same way (where it went down, once it lifts) and, for a finger
+  that went down on the bar, each position it moves to and its lift. The
+  alphabetical list keeps its place as an offset from where the typed
+  text starts (`scroll`), so a drag to a row is that row less the start.
+  Geometry is in one function (`sbar_geom()`), as Defeatist learned to.
+  *Checked:* `test/scrollbar` (new) runs the section as it is in main.c --
+  its Makefile copies it out between the marker and the next section --
+  against fake touch, clock and gfx: the geometry for this list (thumb 24
+  px over 760, last top 54179) and for three million rows, nothing drawn
+  or grabbed for a list that fits, the thumb drawn centred on the finger
+  down the whole track, and `wait_touch()` through a tap, a tap in the zone
+  of a short list and below the track, a drag with moves, a still finger
+  that reports nothing, a drop and the tap after it, and a timeout. ASan
+  and UBSan; two deliberate breaks (no centring; a still finger reported)
+  each fail it. main.c compiles with Espressif's esp-14.2.0 at `-O2 -Wall
+  -Werror=all -Wextra -Werror=extra -fPIC` against feckless-libs v0.8.5's
+  headers (IDF stubbed): about 1 KB more code, and no new name from
+  outside it, so the ABI check should read as before. Not built with
+  ESP-IDF, not on a Tab5. What to look for: the bar on the word list,
+  dragging it to the end and back, and `scrolled to row ...` in the log.

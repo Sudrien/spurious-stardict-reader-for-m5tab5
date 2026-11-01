@@ -120,6 +120,104 @@ static void message(const char *title, const char *body, uint16_t c)
     show();
 }
 
+/* ---- the scrollbar (0020) ---------------------------------------------- */
+
+/* Defeatist's (its browser.c): a bar down the right edge, thumb the share
+ * of the list that is showing, and a control as well as a readout. Drawn
+ * SCROLL_W wide; a finger is caught anywhere in the outer SCROLL_HIT_W of
+ * the list, which is the margin rows leave there anyway. The thumb centres
+ * on the finger rather than keeping where it was grabbed -- a fingertip
+ * covers it, so a press on the track and a drag are one gesture. */
+#define SCROLL_W        16
+#define SCROLL_HIT_W    72
+
+typedef struct {
+    int y, h;               /* the track */
+    int32_t count;          /* rows in the list */
+    int32_t rows;           /* rows showing */
+} sbar_t;
+
+/* False when the list fits, which is also when there is nothing to drag. */
+static bool sbar_geom(const sbar_t *s, int *bar_h, int32_t *max_top)
+{
+    if (s->count <= s->rows || s->h <= 0) return false;
+    *bar_h = (int)((int64_t)s->h * s->rows / s->count);
+    if (*bar_h < 24) *bar_h = 24;
+    if (*bar_h > s->h) *bar_h = s->h;
+    *max_top = s->count - s->rows;
+    return true;
+}
+
+static void sbar_draw(const sbar_t *s, int32_t top, bool held)
+{
+    int bar_h;
+    int32_t max_top;
+    if (!sbar_geom(s, &bar_h, &max_top)) return;
+    if (top < 0) top = 0;
+    if (top > max_top) top = max_top;
+    int bar_y = s->y + (int)((int64_t)(s->h - bar_h) * top / max_top);
+    gfx_fill_rect(W - SCROLL_W, s->y, SCROLL_W, s->h, C_RULE);
+    gfx_fill_rect(W - SCROLL_W, bar_y, SCROLL_W, bar_h, held ? C_TEXT : C_DIM);
+}
+
+/* Is a finger going down at (x, y) a grab: in the zone, on the track, of
+ * a bar that is drawn. */
+static bool sbar_grab(const sbar_t *s, int x, int y)
+{
+    int bar_h;
+    int32_t max_top;
+    return s && x >= W - SCROLL_HIT_W && y >= s->y && y < s->y + s->h &&
+           sbar_geom(s, &bar_h, &max_top);
+}
+
+/* The first row a finger at y asks for, the thumb centred on it. */
+static int32_t sbar_top(const sbar_t *s, int y)
+{
+    int bar_h;
+    int32_t max_top;
+    if (!sbar_geom(s, &bar_h, &max_top)) return 0;
+    int span = s->h - bar_h;
+    int pos = y - s->y - bar_h / 2;
+    if (pos < 0) pos = 0;
+    if (pos > span) pos = span;
+    return span > 0 ? (int32_t)(((int64_t)pos * max_top + span / 2) / span) : 0;
+}
+
+typedef enum {
+    T_NONE,                 /* nothing within the time */
+    T_TAP,                  /* down and up, at where it went down: wait_tap()'s */
+    T_DRAG,                 /* on the scrollbar, at (x, y) now */
+    T_DROP,                 /* off it again */
+} touch_ev_t;
+
+static bool s_drag;         /* a finger on the scrollbar, between calls */
+
+/* wait_tap(), and the scrollbar: a finger that goes down on sb's grab
+ * zone is a drag, reported at each position it moves to and once more
+ * when it lifts, instead of a tap. sb may be NULL. */
+static touch_ev_t wait_touch(const sbar_t *sb, int *x, int *y, int ms)
+{
+    static int drag_y;
+    int64_t until = esp_timer_get_time() + (int64_t)ms * 1000;
+    bool down = false;
+    for (;;) {
+        int tx, ty;
+        bool now = touch_get(&tx, &ty);
+        if (s_drag) {
+            if (!now) { s_drag = false; return T_DROP; }
+            if (ty != drag_y) { drag_y = ty; *x = tx; *y = ty; return T_DRAG; }
+        } else {
+            if (now && !down) {
+                down = true; *x = tx; *y = ty;
+                if (sbar_grab(sb, tx, ty)) { s_drag = true; drag_y = ty; return T_DRAG; }
+            }
+            if (!now && down) return T_TAP;
+            if (!down && esp_timer_get_time() > until) return T_NONE;
+        }
+        vTaskDelay(pdMS_TO_TICKS(15));
+    }
+}
+
 /* ---- finding dictionaries ----------------------------------------------- */
 
 #define MAX_DICTS   16
@@ -248,14 +346,22 @@ static bool define(sd_dict_t *d, uint32_t i, storage_id_t vol)
             buf[m] = 0;
             gfx_draw_text(PAD, HEAD_H + 20 + r * DLINE, buf, DSCALE, W - 2 * PAD, C_TEXT);
         }
+        sbar_t sb = { HEAD_H + 20, DROWS * DLINE, (int32_t)n, DROWS };   /* 0020 */
+        sbar_draw(&sb, top, s_drag);
         int fy = H - FOOT_H, bw = W / 3;
         key(0, fy, bw, FOOT_H, "Back", C_KEY);
         key(bw, fy, bw, FOOT_H, "Up", top > 0 ? C_KEY : C_RULE);
         key(2 * bw, fy, W - 2 * bw, FOOT_H, "Down", top + DROWS < (int)n ? C_KEY : C_RULE);
         show();
         int x, y;
-        while (!wait_tap(&x, &y, 250))
+        touch_ev_t ev;
+        while ((ev = wait_touch(&sb, &x, &y, 250)) == T_NONE)
             if (!storage_present(vol)) { ok = false; goto out; }
+        if (ev == T_DRAG) { top = (int)sbar_top(&sb, y); continue; }
+        if (ev == T_DROP) {
+            ESP_LOGI(TAG, "scrolled to line %d of %d", top, (int)n);
+            continue;
+        }
         if (y < fy) continue;
         if (x < bw) break;
         if (x < 2 * bw) { if (top > 0) top -= DROWS; }
@@ -332,6 +438,8 @@ static void search(sd_dict_t *d, storage_id_t vol)
     for (;;) {
         char big[96];
         uint32_t from = 0;
+        uint32_t lb = 0;                            /* 0020: where q starts */
+        sbar_t sb = { HEAD_H, ROWS * ROW_H, 0, ROWS };
         gfx_fill_rect(0, 0, W, H, C_BG);
         if (sounds) {
             snprintf(big, sizeof big, "~%s_", q);
@@ -353,12 +461,15 @@ static void search(sd_dict_t *d, storage_id_t vol)
             if (scroll >= nhits) scroll = nhits > ROWS ? (nhits - 1) / ROWS * ROWS : 0;
             for (int r = 0; r < ROWS && scroll + r < nhits; r++)
                 draw_row(d, hits[scroll + r], HEAD_H + r * ROW_H, C_TEXT);
+            sb.count = nhits;
+            sbar_draw(&sb, scroll, s_drag);
             if (q[0] && !nhits)
                 gfx_draw_text(PAD, HEAD_H + 30, "Nothing sounds like that.", DSCALE, W - 2 * PAD, C_DIM);
         } else {
             snprintf(big, sizeof big, "%s_", q);
             header(sd_name(d), big);
-            int64_t f = (int64_t)sd_lower_bound(d, q) + scroll;
+            lb = sd_lower_bound(d, q);
+            int64_t f = (int64_t)lb + scroll;
             if (f < 0) { scroll -= (int32_t)f; f = 0; }
             if (f >= sd_rows(d)) {
                 f = sd_rows(d) > ROWS ? sd_rows(d) - ROWS : 0;
@@ -370,13 +481,28 @@ static void search(sd_dict_t *d, storage_id_t vol)
                 draw_row(d, i, HEAD_H + r * ROW_H,
                          q[0] && sd_has_prefix(sd_row_word(d, i), q) ? C_HIT : C_TEXT);
             }
+            sb.count = (int32_t)sd_rows(d);
+            sbar_draw(&sb, (int32_t)from, s_drag);
         }
         draw_keyboard(sounds);
         show();
 
         int x, y;
-        while (!wait_tap(&x, &y, 250))
+        touch_ev_t ev;
+        while ((ev = wait_touch(&sb, &x, &y, 250)) == T_NONE)
             if (!storage_present(vol)) return;
+        /* 0020: the alphabetical list keeps its place as an offset from
+         * where q starts, so a drag to a row is that row less q's start. */
+        if (ev == T_DRAG) {
+            int32_t want = sbar_top(&sb, y);
+            scroll = sounds ? want : (int32_t)((int64_t)want - lb);
+            continue;
+        }
+        if (ev == T_DROP) {
+            ESP_LOGI(TAG, "scrolled to row %ld of %ld",
+                     (long)(sounds ? scroll : (int32_t)from), (long)sb.count);
+            continue;
+        }
         size_t l = strlen(q);
         int kw = W / 10;
         if (y >= HEAD_H && y < KB_Y) {

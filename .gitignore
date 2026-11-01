@@ -1,2 +1,4 @@
 *.zim
 out/
+m5tab5/test/scrollbar/sbtest
+m5tab5/test/scrollbar/lifted.inc

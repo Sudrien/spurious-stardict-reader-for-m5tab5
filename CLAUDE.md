@@ -77,6 +77,9 @@ from the reader to anything outside the ABI fails the build: link it
 into the ELF (`ELF_COMPONENTS` in `elf/CMakeLists.txt`, as tinfl is),
 or it is a patch against feckless-libs first. `main/stardict.c` is plain C:
 `test/stardict` builds it on a host, and a change to it runs there first.
+main.c's scrollbar section (0020) runs on a host too, lifted out of the
+file by `test/scrollbar`'s Makefile between its marker line and the next
+section's; keep those two lines, and run it after changing the section.
 
 - **Every dependency is pinned to a tag.**
 - **The Espressif registry is not reachable from a session.** A session
