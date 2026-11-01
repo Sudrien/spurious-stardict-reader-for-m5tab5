@@ -6,8 +6,9 @@
  * as tools/zim2stardict.py writes them. With one, it opens; with more,
  * a list. Then: type on the keyboard, the list shows the headwords (and
  * the .syn's synonyms) from there on, tap one for its definition. With
- * "sounds" on, the list is instead the words that sound like what was
- * typed (Double Metaphone, main/dmeta.c).
+ * "Sounds like" on -- behind the gear at the top right since 0021 -- the
+ * list is instead the words that sound like what was typed (Double
+ * Metaphone, main/dmeta.c).
  *
  * The board bring-up is Avoidant's (avoidant-launcher-for-m5tab5): the
  * feckless components for the panel, touch, USB host and storage.
@@ -105,11 +106,17 @@ static void key(int x, int y, int w, int h, const char *label, uint16_t bg)
     gfx_draw_text(x + (w - tw) / 2, y + (h - TEXT_H) / 2, label, SCALE, w, C_TEXT);
 }
 
-static void header(const char *small, const char *big)
+/* 0021: its text w wide, so the search screen can keep the gear clear. */
+static void header_w(const char *small, const char *big, int w)
 {
     gfx_fill_rect(0, 0, W, HEAD_H, C_HEAD);
-    if (small) gfx_draw_text(PAD, 20, small, DSCALE, W - 2 * PAD, C_DIM);
-    if (big) gfx_draw_text(PAD, 20 + DTEXT_H + 20, big, SCALE, W - 2 * PAD, C_TEXT);
+    if (small) gfx_draw_text(PAD, 20, small, DSCALE, w, C_DIM);
+    if (big) gfx_draw_text(PAD, 20 + DTEXT_H + 20, big, SCALE, w, C_TEXT);
+}
+
+static void header(const char *small, const char *big)
+{
+    header_w(small, big, W - 2 * PAD);
 }
 
 static void message(const char *title, const char *body, uint16_t c)
@@ -402,16 +409,139 @@ static void draw_row(sd_dict_t *d, uint32_t r, int y, uint16_t c)
     gfx_fill_rect(0, y + ROW_H - 2, W, 2, C_RULE);
 }
 
-static void draw_keyboard(bool sounds)
+/* 0021: sounds moved to the gear's panel, and space has its width. */
+static void draw_keyboard(void)
 {
     int kw = W / 10;
     kbd_draw(&KBD);
     int y = KB_Y + 3 * KEY_H;
     key(0, y, 2 * kw, KEY_H, "Up", C_KEY);
     key(2 * kw, y, 2 * kw, KEY_H, "Down", C_KEY);
-    key(4 * kw, y, 2 * kw, KEY_H, "space", C_KEY);
-    key(6 * kw, y, 2 * kw, KEY_H, "sounds", sounds ? C_HIT_KEY : C_KEY);
+    key(4 * kw, y, 4 * kw, KEY_H, "space", C_KEY);
     key(8 * kw, y, W - 8 * kw, KEY_H, "clear", C_KEY);
+}
+
+/* ---- the gear and its panel (0021) -------------------------------------- */
+
+/* The search screen's settings, behind a gear at the right of its header:
+ * the switches first -- for now one, "Sounds like", which was a key in the
+ * row under the keyboard and read there as a key-click setting -- and
+ * under them the dictionaries on the card and the drive, to change to
+ * another without restarting. The panel sits over the word list (and the
+ * keyboard, with enough dictionaries); a tap on the switch flips it, on a
+ * dictionary opens it, and anywhere else, the gear included, puts the
+ * panel away. */
+#define GEAR_W      HEAD_H              /* the square it is tapped in */
+#define PANEL_X     PAD
+#define PANEL_Y     (HEAD_H + 16)
+#define PANEL_W     (W - 2 * PAD)
+#define PANEL_ROW   (ROW_H + 12)        /* the switch's row */
+#define PANEL_NOTE  (2 * DLINE + 24)    /* what the switch does */
+#define PANEL_TITLE (DLINE + 24)        /* "Dictionaries" */
+#define PANEL_MAX_Y (H - PAD)
+#define SWITCH_W    150
+
+/* The path of the dictionary that is open, and the one chosen from the
+ * panel for app_main() to open next (empty: none). */
+static char s_open_path[PATH_LEN];
+static char s_chosen[PATH_LEN];
+
+/* Defeatist's gear (its ui.c, draw_gear()): a disc with a hole and eight
+ * teeth, from rectangles, the diagonals as blocks set out at 45 degrees. */
+static void draw_gear(int cx, int cy, int o, uint16_t c, uint16_t bg)
+{
+    const int r = o - 4, t = 8, s = 13;
+    gfx_fill_rect(cx - t, cy - o, 2 * t, o - r + 6, c);
+    gfx_fill_rect(cx - t, cy + r - 6, 2 * t, o - r + 6, c);
+    gfx_fill_rect(cx - o, cy - t, o - r + 6, 2 * t, c);
+    gfx_fill_rect(cx + r - 6, cy - t, o - r + 6, 2 * t, c);
+    const int d = (r * 7) / 10;
+    gfx_fill_rect(cx + d - 6, cy - d - 6, s, s, c);
+    gfx_fill_rect(cx - d - 7, cy - d - 6, s, s, c);
+    gfx_fill_rect(cx + d - 6, cy + d - 7, s, s, c);
+    gfx_fill_rect(cx - d - 7, cy + d - 7, s, s, c);
+    gfx_fill_circle(cx, cy, r, c);
+    gfx_fill_circle(cx, cy, 8, bg);
+}
+
+static bool in_gear(int x, int y)
+{
+    return y < HEAD_H && x >= W - GEAR_W;
+}
+
+/* Where the dictionary rows start, and how many of them fit. */
+static int panel_list_y(void)
+{
+    return PANEL_Y + PANEL_ROW + PANEL_NOTE + PANEL_TITLE;
+}
+
+static int panel_rows(void)
+{
+    int fit = (PANEL_MAX_Y - panel_list_y()) / ROW_H;
+    return ndicts < fit ? ndicts : fit;
+}
+
+static int panel_h(void)
+{
+    return panel_list_y() + panel_rows() * ROW_H - PANEL_Y;
+}
+
+#define PANEL_SWITCH    (-1)
+#define PANEL_INSIDE    (-2)        /* on the panel, on nothing */
+#define PANEL_OUTSIDE   (-3)
+
+/* What a tap at (x, y) is on: a dictionary's index, or one of the above. */
+static int panel_hit(int x, int y)
+{
+    if (x < PANEL_X || x >= PANEL_X + PANEL_W || y < PANEL_Y || y >= PANEL_Y + panel_h())
+        return PANEL_OUTSIDE;
+    if (y < PANEL_Y + PANEL_ROW) return PANEL_SWITCH;
+    if (y < panel_list_y()) return PANEL_INSIDE;
+    int i = (y - panel_list_y()) / ROW_H;
+    return i < panel_rows() ? i : PANEL_INSIDE;
+}
+
+static void draw_panel(bool sounds)
+{
+    int h = panel_h();
+    gfx_fill_rect(PANEL_X - 2, PANEL_Y - 2, PANEL_W + 4, h + 4, C_RULE);
+    gfx_fill_rect(PANEL_X, PANEL_Y, PANEL_W, h, C_HEAD);
+
+    int ty = PANEL_Y + (PANEL_ROW - TEXT_H) / 2;
+    gfx_draw_text(PANEL_X + PAD, ty, "Sounds like", SCALE, PANEL_W - SWITCH_W - 3 * PAD, C_TEXT);
+    int sx = PANEL_X + PANEL_W - PAD - SWITCH_W;
+    gfx_fill_rect(sx, PANEL_Y + 14, SWITCH_W, PANEL_ROW - 28, sounds ? C_HIT_KEY : C_KEY);
+    const char *v = sounds ? "on" : "off";
+    gfx_draw_text(sx + (SWITCH_W - gfx_text_w(v, SCALE)) / 2, ty, v, SCALE, SWITCH_W, C_TEXT);
+    gfx_draw_para(PANEL_X + PAD, PANEL_Y + PANEL_ROW + 8,
+                  "Words that sound like what you type, for one you can say "
+                  "but not spell.",
+                  DSCALE, PANEL_W - 2 * PAD, DLINE, 2, C_DIM);
+
+    int y = PANEL_Y + PANEL_ROW + PANEL_NOTE;
+    gfx_fill_rect(PANEL_X, y, PANEL_W, 2, C_RULE);
+    gfx_draw_text(PANEL_X + PAD, y + 16, "Dictionaries", DSCALE, PANEL_W - 2 * PAD, C_DIM);
+    for (int i = 0; i < panel_rows(); i++) {
+        int ry = panel_list_y() + i * ROW_H;
+        bool open = !strcmp(dicts[i], s_open_path);
+        if (open) gfx_fill_rect(PANEL_X, ry, PANEL_W, ROW_H - 2, C_HIT_KEY);
+        gfx_draw_text(PANEL_X + PAD, ry + (ROW_H - TEXT_H) / 2, base(dicts[i]), SCALE,
+                      PANEL_W - 2 * PAD, C_TEXT);
+        gfx_fill_rect(PANEL_X, ry + ROW_H - 2, PANEL_W, 2, C_RULE);
+    }
+}
+
+/* app_main()'s next dictionary: the one chosen from the panel, once, in a
+ * buffer of its own (the next scan() rewrites dicts[]), else the chooser's. */
+static const char *pick_or_chosen(void)
+{
+    static char next[PATH_LEN];
+    if (s_chosen[0]) {
+        snprintf(next, sizeof next, "%s", s_chosen);
+        s_chosen[0] = 0;
+        return next;
+    }
+    return pick();
 }
 
 /* sd_sounds_like()'s first call works out every row's keys: say so. */
@@ -435,6 +565,7 @@ static void search(sd_dict_t *d, storage_id_t vol)
     static uint32_t hits[MAX_HITS];
     int nhits = 0;
     bool stale = true;          /* hits are not for q */
+    bool panel = false;         /* 0021: the gear's panel is up */
     for (;;) {
         char big[96];
         uint32_t from = 0;
@@ -443,7 +574,7 @@ static void search(sd_dict_t *d, storage_id_t vol)
         gfx_fill_rect(0, 0, W, H, C_BG);
         if (sounds) {
             snprintf(big, sizeof big, "~%s_", q);
-            header(sd_name(d), big);
+            header_w(sd_name(d), big, W - PAD - GEAR_W);
             if (stale) {
                 nhits = q[0] ? sd_sounds_like(d, q, hits, MAX_HITS, keys_progress) : 0;
                 if (nhits < 0) {
@@ -467,7 +598,7 @@ static void search(sd_dict_t *d, storage_id_t vol)
                 gfx_draw_text(PAD, HEAD_H + 30, "Nothing sounds like that.", DSCALE, W - 2 * PAD, C_DIM);
         } else {
             snprintf(big, sizeof big, "%s_", q);
-            header(sd_name(d), big);
+            header_w(sd_name(d), big, W - PAD - GEAR_W);
             lb = sd_lower_bound(d, q);
             int64_t f = (int64_t)lb + scroll;
             if (f < 0) { scroll -= (int32_t)f; f = 0; }
@@ -484,12 +615,14 @@ static void search(sd_dict_t *d, storage_id_t vol)
             sb.count = (int32_t)sd_rows(d);
             sbar_draw(&sb, (int32_t)from, s_drag);
         }
-        draw_keyboard(sounds);
+        draw_keyboard();
+        draw_gear(W - GEAR_W / 2, HEAD_H / 2, 32, panel ? C_HIT : C_TEXT, C_HEAD);
+        if (panel) draw_panel(sounds);
         show();
 
         int x, y;
         touch_ev_t ev;
-        while ((ev = wait_touch(&sb, &x, &y, 250)) == T_NONE)
+        while ((ev = wait_touch(panel ? NULL : &sb, &x, &y, 250)) == T_NONE)
             if (!storage_present(vol)) return;
         /* 0020: the alphabetical list keeps its place as an offset from
          * where q starts, so a drag to a row is that row less q's start. */
@@ -501,6 +634,29 @@ static void search(sd_dict_t *d, storage_id_t vol)
         if (ev == T_DROP) {
             ESP_LOGI(TAG, "scrolled to row %ld of %ld",
                      (long)(sounds ? scroll : (int32_t)from), (long)sb.count);
+            continue;
+        }
+        /* 0021: with the panel up, a tap is the switch, a dictionary, or
+         * puts the panel away. */
+        if (panel) {
+            int hit = panel_hit(x, y);
+            if (hit == PANEL_SWITCH) {
+                sounds = !sounds;
+                scroll = 0;
+                stale = true;
+                ESP_LOGI(TAG, "sounds like: %s", sounds ? "on" : "off");
+            } else if (hit >= 0 && strcmp(dicts[hit], s_open_path)) {
+                snprintf(s_chosen, sizeof s_chosen, "%s", dicts[hit]);
+                ESP_LOGI(TAG, "changing to %s", base(s_chosen));
+                return;
+            } else if (hit != PANEL_INSIDE) {
+                panel = false;
+            }
+            continue;
+        }
+        if (in_gear(x, y)) {
+            scan();             /* what is on the card and the drive now */
+            panel = true;
             continue;
         }
         size_t l = strlen(q);
@@ -520,12 +676,8 @@ static void search(sd_dict_t *d, storage_id_t vol)
         } else if (y >= KB_Y + 3 * KEY_H) {
             if (x < 2 * kw) scroll -= ROWS;
             else if (x < 4 * kw) scroll += ROWS;
-            else if (x < 6 * kw) {
+            else if (x < 8 * kw) {
                 if (l && l + 1 < sizeof q && q[l - 1] != ' ') { q[l] = ' '; q[l + 1] = 0; }
-                scroll = 0;
-                stale = true;
-            } else if (x < 8 * kw) {
-                sounds = !sounds;
                 scroll = 0;
                 stale = true;
             } else {
@@ -569,7 +721,8 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(1500));    /* the card mounts on storage's poll task */
 
     for (;;) {
-        const char *ifo = pick();
+        /* 0021: a dictionary chosen from the gear's panel, else the chooser. */
+        const char *ifo = pick_or_chosen();
         message("Opening", base(ifo), C_DIM);
         char err[200];
         int64_t t0 = esp_timer_get_time();
@@ -587,6 +740,7 @@ void app_main(void)
         /* The .dict stays open: a held volume unmounts only after release. */
         storage_id_t vol = storage_of_path(ifo);
         storage_hold(vol);
+        snprintf(s_open_path, sizeof s_open_path, "%s", ifo);      /* 0021 */
         search(d, vol);
         sd_close(d);
         storage_hold(STORAGE_COUNT);

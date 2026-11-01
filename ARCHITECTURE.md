@@ -281,3 +281,29 @@
   outside it, so the ABI check should read as before. Not built with
   ESP-IDF, not on a Tab5. What to look for: the bar on the word list,
   dragging it to the end and back, and `scrolled to row ...` in the log.
+- **0021 A gear for the settings, and the dictionaries under them.** The
+  row under the keyboard had a key called "sounds" -- the sounds-like
+  search -- which read there as a key-click setting. It moves to a panel
+  behind a gear at the right of the search screen's header (Defeatist's
+  gear, its ui.c `draw_gear()`: a disc, a hole, eight teeth from
+  rectangles), and the row is Up, Down, a space twice as wide, and clear.
+  The panel lies over the top of the word list: "Sounds like" with an
+  on/off switch and a line on what it is for, then the dictionaries on the
+  card and the drive, the open one highlighted. A tap on the switch flips
+  it (`sounds like: on` in the log); on another dictionary closes this one
+  and opens that (`changing to <name>`, then the usual open line) -- until
+  now the only choice was the chooser at boot; anywhere else, the gear
+  included, puts the panel away. Opening it scans the volumes again, so a
+  dictionary put on the card since boot is there. `search()` returns with
+  the choice in `s_chosen`, and `app_main()` opens it in place of
+  `pick()`'s (`pick_or_chosen()`); one that will not open falls back to the
+  chooser, as before. The header's text stops short of the gear
+  (`header_w()`). The scrollbar does not grab while the panel is up. With
+  more dictionaries than fit (11 at this size), the rest are not shown.
+  *Checked:* main.c compiles with Espressif's esp-14.2.0 at `-O2 -Wall
+  -Werror=all -Wextra -Werror=extra -fPIC` against feckless-libs v0.8.5's
+  headers (IDF stubbed); new imports `gfx_fill_circle` and `strcmp`, both in
+  the core list. The search screen and the panel were drawn on a host by
+  this file's own functions with feckless-libs' real gfx.c and Ark12, over a
+  fake dictionary, and looked at; the panel's tap map checked at each part's
+  edges. `test/scrollbar` passes. Not built with ESP-IDF, not on a Tab5.
