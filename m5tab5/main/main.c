@@ -823,7 +823,8 @@ void app_main(void)
     /* Which build this is: the version is the tag or ref CI wrote to
      * version.txt, else git describe. */
     const esp_app_desc_t *app = esp_app_get_description();
-    ESP_LOGI(TAG, "=== Spurious %s, built %s %s, ESP-IDF %s ===",
+    /* 0025: a warning, so the banner stands out in the log (yellow). */
+    ESP_LOGW(TAG, "=== Spurious %s, built %s %s, ESP-IDF %s ===",
              app->version, app->date, app->time, app->idf_ver);
 
     ESP_ERROR_CHECK(tab5io_init());     /* bus, expanders, LCD_RST/TP_RST released */

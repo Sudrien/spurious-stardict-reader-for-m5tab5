@@ -374,3 +374,8 @@
   board build would have it (21 rows, licences and fonts), at 2 and 11
   dictionaries, both pages, and looked at; the libraries' tap gives the
   next page. Not built with ESP-IDF, not on a Tab5.
+- **0025 The banner is a warning.** `=== Spurious <version>, built ...,
+  ESP-IDF ... ===` is logged with `ESP_LOGW`, not `ESP_LOGI`, so it is
+  yellow in the monitor and easy to find among the boot lines; it also
+  shows at the Warn level, where it did not. Nothing else changes. Not
+  built; the line's arguments are as they were.
