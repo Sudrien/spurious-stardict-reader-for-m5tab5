@@ -61,7 +61,7 @@ static const char *TAG = "spurious";
 #define HEAD_H      150
 #define ROW_H       76
 #define KEY_H       88
-#define KB_Y        (H - 4 * KEY_H)
+#define KB_Y        (H - (KBD_ROWS + 1) * KEY_H)   /* 0023: the keyboard, and our row */
 #define ROWS        ((KB_Y - HEAD_H) / ROW_H)
 #define FOOT_H      120
 #define DLINE       (DTEXT_H + 10)
@@ -383,11 +383,20 @@ out:
 
 /* ---- search ------------------------------------------------------------- */
 
-/* 0019: the three rows of keys are feckless_keyboard's (feckless-libs'
- * 8010), which is this file's kb[] and key() as they were; the row under
- * them is still this file's. */
-static const kbd_t KBD = { .x = 0, .y = KB_Y, .w = W, .key_h = KEY_H,
-                           .scale = SCALE, .key = C_KEY, .text = C_TEXT };
+/* 0019: the keys are feckless_keyboard's (feckless-libs' 8010, this
+ * file's kb[] and key() as they were). 0023: v0.8.6's (its 8011), four
+ * rows staggered as a real keyboard's, with shift and a symbol page; its
+ * state is its own, so this is no longer const. The row under it is this
+ * file's. */
+static kbd_t KBD = { .x = 0, .y = KB_Y, .w = W, .key_h = KEY_H, .scale = SCALE,
+                     .key = C_KEY, .text = C_TEXT, .on = C_HIT_KEY };
+
+/* Our row's keys on the keyboard's pitch, eleven across: the n'th key's
+ * left edge. */
+static int kb_x(int n)
+{
+    return n * W / KBD_UNITS;
+}
 
 #define MAX_HITS    (4 * ROWS)
 
@@ -412,13 +421,12 @@ static void draw_row(sd_dict_t *d, uint32_t r, int y, uint16_t c)
 /* 0021: sounds moved to the gear's panel, and space has its width. */
 static void draw_keyboard(void)
 {
-    int kw = W / 10;
     kbd_draw(&KBD);
-    int y = KB_Y + 3 * KEY_H;
-    key(0, y, 2 * kw, KEY_H, "Up", C_KEY);
-    key(2 * kw, y, 2 * kw, KEY_H, "Down", C_KEY);
-    key(4 * kw, y, 4 * kw, KEY_H, "space", C_KEY);
-    key(8 * kw, y, W - 8 * kw, KEY_H, "clear", C_KEY);
+    int y = KB_Y + kbd_h(&KBD);
+    key(kb_x(0), y, kb_x(2) - kb_x(0), KEY_H, "Up", C_KEY);
+    key(kb_x(2), y, kb_x(4) - kb_x(2), KEY_H, "Down", C_KEY);
+    key(kb_x(4), y, kb_x(9) - kb_x(4), KEY_H, "space", C_KEY);
+    key(kb_x(9), y, kb_x(11) - kb_x(9), KEY_H, "clear", C_KEY);
 }
 
 /* ---- the gear and its panel (0021) -------------------------------------- */
@@ -660,7 +668,6 @@ static void search(sd_dict_t *d, storage_id_t vol)
             continue;
         }
         size_t l = strlen(q);
-        int kw = W / 10;
         if (y >= HEAD_H && y < KB_Y) {
             int r = (y - HEAD_H) / ROW_H;
             if (r >= ROWS) continue;
@@ -669,14 +676,18 @@ static void search(sd_dict_t *d, storage_id_t vol)
             } else if (from + (uint32_t)r < sd_rows(d)) {
                 if (!define(d, sd_row_entry(d, from + (uint32_t)r), vol)) return;
             }
-        } else if (y >= KB_Y && y < KB_Y + 3 * KEY_H) {
-            kbd_edit(q, sizeof q, kbd_hit(&KBD, x, y));
+        } else if (y >= KB_Y && y < KB_Y + kbd_h(&KBD)) {
+            /* 0023: shift and #+ change only the keys' labels, which the
+             * redraw shows; a gap in the stagger is nothing. */
+            int k = kbd_hit(&KBD, x, y);
+            if (k == KBD_STATE || k == KBD_NONE) continue;
+            kbd_edit(q, sizeof q, k);
             scroll = 0;
             stale = true;
-        } else if (y >= KB_Y + 3 * KEY_H) {
-            if (x < 2 * kw) scroll -= ROWS;
-            else if (x < 4 * kw) scroll += ROWS;
-            else if (x < 8 * kw) {
+        } else if (y >= KB_Y + kbd_h(&KBD)) {
+            if (x < kb_x(2)) scroll -= ROWS;
+            else if (x < kb_x(4)) scroll += ROWS;
+            else if (x < kb_x(9)) {
                 if (l && l + 1 < sizeof q && q[l - 1] != ' ') { q[l] = ' '; q[l + 1] = 0; }
                 scroll = 0;
                 stale = true;

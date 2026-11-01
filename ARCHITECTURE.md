@@ -307,3 +307,41 @@
   this file's own functions with feckless-libs' real gfx.c and Ark12, over a
   fake dictionary, and looked at; the panel's tap map checked at each part's
   edges. `test/scrollbar` passes. Not built with ESP-IDF, not on a Tab5.
+- **0023 The keyboard is a keyboard.** feckless-libs v0.8.6, whose
+  `feckless_keyboard` (its 8011) has four rows staggered as a real
+  keyboard's -- a number row, then q-p half a key in, a-l a quarter
+  further, z-m half further again -- with shift (once, twice for caps
+  lock, again off) and `#+` for a page of the symbols shift does not give:
+  every printable ASCII character but space has a key now, where 0019's
+  had lower case, `'`, `-` and `.`. *Number:* 0022 was this patch, handed
+  over with the pins moving `v0.8.5` -> `v0.8.6` in it, and not applied --
+  the "lock" commit after 0021 moved them -- so its manifest hunk had nothing
+  to apply to; this is 0023 without it, and 0022 is left as a gap, not
+  reused (as Avoidant's 0047 was). The API changed at v0.8.6, and the first
+  build of this tree against it failed as it should: `passing argument 1 of 'kbd_hit' discards 'const'
+  qualifier`. So `KBD` is no longer const (the keyboard keeps its shift and
+  page in it), lights a modifier in `C_HIT_KEY`, and a tap that is shift
+  or `#+` (`KBD_STATE`) or a gap in the stagger (`KBD_NONE`) only redraws:
+  it does not clear the scroll or the sounds-like results as a typed
+  character does. Capitals change nothing found: `sd_lower_bound()` and
+  `sd_has_prefix()` fold case, and Double Metaphone works in capitals.
+  The keyboard is four rows of `KEY_H`, so `KB_Y` is `(KBD_ROWS + 1)` rows
+  up from the bottom and the word list is nine rows where it was ten. Our
+  row under it -- Up, Down, space, clear -- is on the keyboard's pitch,
+  eleven keys across (`kb_x()`): 2, 2, 5 and 2 of them, so its edges line
+  up with the number row's.
+  No `idf_component.yml` change: the lock commit has the pins at v0.8.6 and
+  `feckless_keyboard` at its commit. No `sdkconfig.defaults` change.
+  *Checked:* main.c compiles with Espressif's esp-14.2.0 at `-O2 -Wall
+  -Wextra -Werror -fPIC` against v0.8.6's headers (IDF stubbed) -- every
+  warning an error, as IDF's build has it -- with `kbd_h` its one new
+  import, from the component linked into the ELF. The tree as pushed gives
+  the error above at the same line and column, and this does not. The
+  checks of 0019-0022 used `-Werror=all`, which leaves out warnings that
+  are on by default and not in `-Wall` -- `discarded-qualifiers` is one --
+  so would not have caught this; the whole of main.c passing `-Werror` now
+  covers what they changed. The search screen was drawn on a host
+  by this file's functions with the real gfx.c, Ark12 and v0.8.6's
+  keyboard, at rest and with shift once, and looked at. `test/scrollbar`
+  passes. The keyboard's own checks are feckless-libs'. Not built with
+  ESP-IDF, not on a Tab5.
