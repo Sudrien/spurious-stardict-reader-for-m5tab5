@@ -12,6 +12,7 @@ if(_spurious_elf)
         INCLUDE_DIRS "."
         REQUIRES esp_app_format fatfs vfs esp_lcd esp_timer
                  tinfl                       # linked into the ELF
+                 feckless_keyboard           # 0019: linked into the ELF
                  feckless_abi feckless_abi_storage
                  feckless_graphics_handler feckless_drivers feckless_storage_handler
     )

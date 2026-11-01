@@ -14,35 +14,45 @@ dependencies:
   # rest -- storage version 2, with fast seek (feckless-libs' 5003). The
   # reader is an ELF built against them (elf/); the .bin links both and
   # runs it, as a launcher does.
+  # 0019: v0.8.5, for feckless_keyboard (feckless-libs' 8010): this
+  # reader's own keyboard, moved there unchanged so the other Tab5 apps can
+  # have it. Linked into the ELF, as tinfl is. Between v0.5.0 and v0.8.5
+  # nothing this reader calls changed; the core list gained IDF's GPIO,
+  # UART, I2C, partition and OTA names and abort, which feckless_abi now
+  # brings the components for itself.
   feckless_abi:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_abi
-    version: "v0.5.0"
+    version: "v0.8.5"
   feckless_abi_storage:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_abi_storage
-    version: "v0.5.0"
+    version: "v0.8.5"
   feckless_graphics_handler:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_graphics_handler
-    version: "v0.5.0"
+    version: "v0.8.5"
   feckless_storage_handler:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_storage_handler
-    version: "v0.5.0"
+    version: "v0.8.5"
   feckless_drivers:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_drivers
-    version: "v0.5.0"
+    version: "v0.8.5"
   fatfs:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/fatfs
-    version: "v0.5.0"
+    version: "v0.8.5"
   usb_host_msc:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/usb_host_msc
-    version: "v0.5.0"
+    version: "v0.8.5"
   usb_host_uac:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/usb_host_uac
-    version: "v0.5.0"
+    version: "v0.8.5"
+  feckless_keyboard:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_keyboard
+    version: "v0.8.5"

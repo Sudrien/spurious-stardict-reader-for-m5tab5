@@ -37,6 +37,7 @@
 #include "storage.h"
 #include "storage_io.h"
 
+#include "feckless_keyboard.h"     /* 0019 */
 #include "gfx.h"
 #include "lcd.h"
 #include "tab5io.h"
@@ -269,11 +270,11 @@ out:
 
 /* ---- search ------------------------------------------------------------- */
 
-static const char *const kb[3][10] = {
-    { "q", "w", "e", "r", "t", "y", "u", "i", "o", "p" },
-    { "a", "s", "d", "f", "g", "h", "j", "k", "l", "'" },
-    { "z", "x", "c", "v", "b", "n", "m", "-", ".", "del" },
-};
+/* 0019: the three rows of keys are feckless_keyboard's (feckless-libs'
+ * 8010), which is this file's kb[] and key() as they were; the row under
+ * them is still this file's. */
+static const kbd_t KBD = { .x = 0, .y = KB_Y, .w = W, .key_h = KEY_H,
+                           .scale = SCALE, .key = C_KEY, .text = C_TEXT };
 
 #define MAX_HITS    (4 * ROWS)
 
@@ -298,9 +299,7 @@ static void draw_row(sd_dict_t *d, uint32_t r, int y, uint16_t c)
 static void draw_keyboard(bool sounds)
 {
     int kw = W / 10;
-    for (int r = 0; r < 3; r++)
-        for (int c = 0; c < 10; c++)
-            key(c * kw, KB_Y + r * KEY_H, kw, KEY_H, kb[r][c], C_KEY);
+    kbd_draw(&KBD);
     int y = KB_Y + 3 * KEY_H;
     key(0, y, 2 * kw, KEY_H, "Up", C_KEY);
     key(2 * kw, y, 2 * kw, KEY_H, "Down", C_KEY);
@@ -389,9 +388,7 @@ static void search(sd_dict_t *d, storage_id_t vol)
                 if (!define(d, sd_row_entry(d, from + (uint32_t)r), vol)) return;
             }
         } else if (y >= KB_Y && y < KB_Y + 3 * KEY_H) {
-            const char *k = kb[(y - KB_Y) / KEY_H][x / kw < 10 ? x / kw : 9];
-            if (!strcmp(k, "del")) { if (l) q[l - 1] = 0; }
-            else if (l + 1 < sizeof q) { q[l] = k[0]; q[l + 1] = 0; }
+            kbd_edit(q, sizeof q, kbd_hit(&KBD, x, y));
             scroll = 0;
             stale = true;
         } else if (y >= KB_Y + 3 * KEY_H) {

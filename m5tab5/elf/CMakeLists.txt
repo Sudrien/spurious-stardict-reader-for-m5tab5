@@ -58,5 +58,5 @@ project(spurious_reader)
 
 # Into the ELF, not the ABI: miniz's inflater, renamed so the P4 ROM's
 # older miniz cannot bind its symbols (components/tinfl, 0011).
-set(ELF_COMPONENTS tinfl)
+set(ELF_COMPONENTS tinfl feckless_keyboard)
 feckless_abi_elf(spurious_reader)

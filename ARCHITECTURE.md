@@ -206,3 +206,38 @@
   in feckless_abi_v1 + feckless_abi_storage_v2`, an ELF of 34564 bytes,
   spurious.bin 0x135100, no warnings. `dependencies.lock` not updated;
   `rm sdkconfig`. Not on a Tab5.
+- **0019 The keyboard is feckless_keyboard.** This reader's three rows of
+  keys -- the `kb[]` table, its loop in `draw_keyboard()` and the keyboard
+  branch of `search()` -- moved to feckless-libs as `feckless_keyboard`
+  (its 8010) so the other Tab5 apps can have them, unchanged: its host
+  test runs that component against a copy of this file's code at daa69a6
+  and gets the same 60 gfx calls, and the same query after a tap on every
+  pixel of the band (570,240 taps). Here, a `kbd_t` with this layout (the
+  band at x 0, `KB_Y`, `W` wide, `KEY_H` rows, `SCALE`, `C_KEY` and
+  `C_TEXT`); `kbd_draw()` where the loop was; `kbd_edit(q, sizeof q,
+  kbd_hit(...))` where the lookup and the edit were. `key()` and the row
+  under the keys (Up, Down, space, sounds, clear) stay here. It links into
+  the ELF beside tinfl (`ELF_COMPONENTS`, and main's REQUIRES in the ELF
+  build).
+  **Every feckless pin `v0.5.0` -> `v0.8.5`**, the tag with the component.
+  Between them nothing this reader calls changed: every function it takes
+  from tab5io, usbhost, touch, lcd, gfx, storage, storage_io and
+  feckless_abi has the same signature, `storage_usb_t` the same fields,
+  `abicheck.cmake` and `feckless_abi_elf()` are unchanged, and no exported
+  name was removed. The core list gained IDF's GPIO, UART, I2C, partition
+  and OTA names and `abort`, and feckless_abi brings the components for
+  them itself (its PRIV_REQUIRES), so the standalone .bin's launcher side
+  grows by that much code.
+  **`idf_component.yml` changed, so `dependencies.lock` re-resolves** on
+  the next build: the git pins move, `feckless_keyboard` joins, and
+  `espressif/elf_loader` may move within feckless_abi's `2.*`; read the
+  diff. No `sdkconfig.defaults` change.
+  *Checked:* main.c compiles with Espressif's esp-14.2.0 at `-O2 -Wall
+  -Werror=all -Wextra -Werror=extra -fPIC` against feckless-libs v0.8.5's
+  headers (IDF's types and macros stubbed), before and after, with no
+  warning either way; linked with the component, its undefined names are
+  the old object's exactly -- the keyboard's resolve inside, and its gfx
+  calls were this file's already. Not built with ESP-IDF, not on a Tab5.
+  What to look for: the ABI check's `feckless_abi: N symbols, all in
+  feckless_abi_v1 + feckless_abi_storage_v2` with N as before (72 at
+  0018), and the keyboard looking and typing as it did.
