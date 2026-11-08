@@ -16,6 +16,7 @@ if(_spurious_elf)
                  feckless_libversions        # 0024: libversions.h; a header, nothing linked
                  feckless_abi feckless_abi_storage
                  feckless_graphics_handler feckless_drivers feckless_storage_handler
+                 feckless_box_libc           # u-spurious-0001: linked into the ELF
     )
     return()
 endif()
@@ -24,6 +25,7 @@ idf_component_register(
     SRCS "standalone.c"
     PRIV_REQUIRES feckless_abi feckless_abi_storage nvs_flash
                   feckless_drivers feckless_storage_handler
+                  feckless_umode feckless_box_calls   # u-spurious-0001: the box
 )
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)

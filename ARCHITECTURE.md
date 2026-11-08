@@ -411,3 +411,56 @@
   end and Back, with 11 dictionaries, 21 libraries and a 30-sense
   definition; the frames were looked at. Not built with ESP-IDF, not on
   a Tab5.
+
+## The `umode` branch
+
+The reader built for a box: RISC-V user mode, one block of PSRAM that the
+PMP grants it and nothing else, every call outside it answered and checked by
+the launcher (feckless-libs' `umode` branch, `u-feckless-0001` to `0008`;
+Avoidant's, `u-avoidant-0001`). Numbered `u-spurious-NNNN` (CLAUDE.md). It
+is the test of that work: the first app built for it.
+
+### u-spurious-0001 -- the reader in a box
+
+- `elf/CMakeLists.txt`: `feckless_abi_box_elf()` in place of
+  `feckless_abi_elf()`. The ELF links the pure part of libc itself
+  (`feckless_box_libc`: string and memory, `qsort` with its own comparator,
+  ctype, `strtol`, `snprintf`, the log calls' formatting, and the libgcc
+  helpers that can be), and the build fails if it imports any of that.
+- `main.c`: `feckless_abi_require_box()` beside the ABI's and storage's.
+  A launcher that would run it trusted refuses it by the name
+  `feckless_abi_box_v1`; one that boxes apps looks for that name.
+- `standalone.c`: the .bin runs its embedded ELF the same way, in a box --
+  `feckless_umode_guard_unroute()`, `feckless_umode_load()` with
+  `feckless_box_calls_v1()` (the largest PSRAM block less 1 MB, at most
+  24 MB, a 64 KB stack), `feckless_umode_app_run()`, and the end logged --
+  not through `feckless_abi_run()`, which would refuse it.
+- `sdkconfig.defaults`: `CONFIG_BOOTLOADER_REGION_PROTECTION_ENABLE=n`, as
+  Avoidant's (u-avoidant-0001 says why, from IDF 6.1's source). **`rm
+  sdkconfig`.** elf/ copies this sdkconfig, so the ELF's build has it too,
+  where it changes nothing.
+- `main/idf_component.yml`: the ten feckless pins `v0.8.7` -> `umode`, the
+  branch; `feckless_box_libc` (for the ELF), `feckless_umode` and
+  `feckless_box_calls` (for the .bin) added; the IDF floor 5.4.2 -> 6.1, as
+  feckless-libs v0.10 has it. This moves the reader past v0.8.7's ABI as well:
+  feckless-libs' 9017 makes the ABI picolibc's, which IDF 6.1 builds with by
+  default, and nothing here selects newlib. **`dependencies.lock` is not
+  updated**: the next build's re-resolve writes it, with the branch's commit.
+
+What the box answers for the reader was read from these sources, not from a
+link: every name main/, tinfl and feckless_keyboard call from the ABI is in
+the box's in-app list or its call table (feckless-libs' u-feckless-0008 found
+`_esp_error_check_failed`, from `ESP_ERROR_CHECK()`, missing and added it).
+A name that is still missing fails the ELF's build (abicheck) or its load in
+the box, by name, before any of it runs.
+
+*Not checked:* an ESP-IDF build -- the ELF's link with the box's libc, its
+abicheck and boxcheck, and the .bin's; a board.
+
+*What to look for on a Tab5*, under Avoidant's umode branch or as the
+standalone .bin: `feckless_box_libc: boxed, N imports, none of them in-app
+names` in the ELF's build; then `feckless_umode: app in its box ...`, the
+banner `=== Spurious ... ===` through the box's log, the dictionaries found
+on the card (`opendir`/`readdir` through the box), one opened with `fast
+seek, N of M table items`, words looked up and drawn; under Avoidant,
+leaving it brings the menu back.

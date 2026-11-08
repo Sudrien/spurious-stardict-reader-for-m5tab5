@@ -32,6 +32,7 @@
 #include "esp_timer.h"
 #include "feckless_abi.h"            /* 0018 */
 #include "feckless_abi_storage.h"
+#include "feckless_box.h"            /* u-spurious-0001 */
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -820,6 +821,10 @@ void app_main(void)
      * launcher without either refuses it before any of this runs. */
     feckless_abi_require();
     feckless_abi_require_storage();
+    /* u-spurious-0001: and to a box -- a launcher that would run it trusted
+     * refuses it by this name; Avoidant's umode branch and this firmware's
+     * standalone.c run it in one. */
+    feckless_abi_require_box();
 
     /* Which build this is: the version is the tag or ref CI wrote to
      * version.txt, else git describe. */

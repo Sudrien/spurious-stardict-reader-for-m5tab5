@@ -58,6 +58,17 @@ start a series. **The first patch after a tag updates this paragraph**
 and opens the next series' heading in `ARCHITECTURE.md`; the tag is the
 reminder, and this file is what the next session reads.
 
+**The `umode` branch has a numbering of its own: `u-spurious-NNNN`.**
+Its patches are named `u-spurious-0001-<subject>.patch`, `u-spurious-0002-...`,
+and apply to the `umode` branch, not to main. They are numbered from
+`--start-number 1` and renamed with the prefix; the subject has neither.
+Their `ARCHITECTURE.md` entries are under "The `umode` branch" at the end
+of the file, headed `u-spurious-NNNN`, so they cannot clash with a patch on
+main meanwhile. Look at the last `u-spurious` entry for the next number.
+The branch pins feckless-libs' own `umode` branch (`u-feckless-NNNN`), not a
+tag; Avoidant's `umode` branch (`u-avoidant-NNNN`) is the launcher that runs
+it. When it merges, its entries move into the series it goes into.
+
 **What a patch's `ARCHITECTURE.md` entry says:** its number and
 subject, one or two lines of what it does, and -- once a board has run
 it -- what the log showed, with the line that proves it. A patch that

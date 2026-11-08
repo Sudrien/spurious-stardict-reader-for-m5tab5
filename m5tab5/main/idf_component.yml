@@ -1,6 +1,8 @@
 dependencies:
   idf:
-    version: ">=5.4.2"
+    # u-spurious-0001: 6.1, as feckless-libs' v0.10 (the umode branch's base)
+    # requires; the build's picolibc is the ABI's.
+    version: ">=6.1"
 
   # 0017: the feckless libraries, from feckless-libs-for-m5tab5, every
   # one at the same tag. The panel, backlight and gfx text; the I2C bus,
@@ -23,39 +25,39 @@ dependencies:
   feckless_abi:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_abi
-    version: "v0.8.7"
+    version: "umode"
   feckless_abi_storage:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_abi_storage
-    version: "v0.8.7"
+    version: "umode"
   feckless_graphics_handler:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_graphics_handler
-    version: "v0.8.7"
+    version: "umode"
   feckless_storage_handler:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_storage_handler
-    version: "v0.8.7"
+    version: "umode"
   feckless_drivers:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_drivers
-    version: "v0.8.7"
+    version: "umode"
   fatfs:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/fatfs
-    version: "v0.8.7"
+    version: "umode"
   usb_host_msc:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/usb_host_msc
-    version: "v0.8.7"
+    version: "umode"
   usb_host_uac:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/usb_host_uac
-    version: "v0.8.7"
+    version: "umode"
   feckless_keyboard:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_keyboard
-    version: "v0.8.7"
+    version: "umode"
   # 0024: v0.8.7, for feckless_libversions (feckless-libs' 8012-8014): the
   # settings panel's list of libraries, generated when elf/ is configured.
   # A header only. v0.8.7 also has 8015, Ark12 with IPA, which the
@@ -63,4 +65,21 @@ dependencies:
   feckless_libversions:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_libversions
-    version: "v0.8.7"
+    version: "umode"
+
+  # u-spurious-0001: a box. Every feckless pin above is feckless-libs' umode
+  # branch, not a tag, while it is tested; the lock records its commit.
+  # feckless_box_libc goes into the ELF (feckless_abi_box_elf()); the box
+  # itself, feckless_umode and feckless_box_calls, into standalone.c's .bin.
+  feckless_box_libc:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_box_libc
+    version: "umode"
+  feckless_umode:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_umode
+    version: "umode"
+  feckless_box_calls:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_box_calls
+    version: "umode"

@@ -59,7 +59,9 @@ project(spurious_reader)
 # Into the ELF, not the ABI: miniz's inflater, renamed so the P4 ROM's
 # older miniz cannot bind its symbols (components/tinfl, 0011).
 set(ELF_COMPONENTS tinfl feckless_keyboard)
-feckless_abi_elf(spurious_reader)
+# u-spurious-0001: for a box (feckless-libs' umode branch): the pure part of
+# libc linked into the ELF, and a check that it imports none of it.
+feckless_abi_box_elf(spurious_reader)
 
 # 0024: libversions.h, the settings panel's list of libraries, from the
 # lock, the fonts and this repository's commit (feckless-libs'
