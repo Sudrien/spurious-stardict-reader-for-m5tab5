@@ -464,3 +464,21 @@ banner `=== Spurious ... ===` through the box's log, the dictionaries found
 on the card (`opendir`/`readdir` through the box), one opened with `fast
 seek, N of M table items`, words looked up and drawn; under Avoidant,
 leaving it brings the menu back.
+
+### u-spurious-0002 -- the open checks in with the host
+
+The box runs with interrupts held off until its next host call
+(u-feckless-0017). The panel's DPI driver needs an interrupt every frame,
+and it went blue for the length of the dictionary open. The en-simple
+Wiktionary build logged `(out of order: sorted)`, so the 54189 rows went
+through `qsort`: about 850k comparisons with no host call between them.
+
+`stardict.c` gets `checkin()`. Every 2048th call it makes a `time(NULL)`
+host call, which exits the window, so the pending interrupts are taken.
+`checkin()` is called from the `qsort` comparator, the `.idx` and `.syn`
+scans, and the merge-and-check pass. A file in the wrong order is not
+something the reader can rule out, so a sorted file is not assumed.
+
+`tools/sdorder.py <name>.ifo` applies the reader's order rules on a PC
+and prints the first pair that breaks them in the `.idx` or `.syn`. It
+is for finding out why a dictionary needed re-sorting.

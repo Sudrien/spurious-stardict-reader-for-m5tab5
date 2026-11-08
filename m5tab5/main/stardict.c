@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "dmeta.h"
 #include "miniz_tinfl.h"
@@ -281,10 +282,23 @@ static int row_cmp(const sd_dict_t *d, uint32_t a, uint32_t b)
     return c ? c : strcmp(x, y);
 }
 
+/* Touch the host every CHECKIN_EVERY calls.  Boxed, the reader runs with
+ * interrupts held off until its next host call, and IDF's DPI driver needs
+ * one every frame or the panel goes blue; any call will do, and time() is
+ * the cheapest in the table.  A 54189-word qsort is ~850k comparisons with
+ * no host call at all.  2048 comparisons is well under a frame. */
+#define CHECKIN_EVERY 2048u
+static void checkin(void)
+{
+    static unsigned n;
+    if (++n % CHECKIN_EVERY == 0) (void)time(NULL);
+}
+
 static const sd_dict_t *sort_d;     /* for row_qcmp: qsort has no context argument */
 
 static int row_qcmp(const void *a, const void *b)
 {
+    checkin();
     return row_cmp(sort_d, *(const uint32_t *)a, *(const uint32_t *)b);
 }
 
@@ -389,6 +403,7 @@ sd_dict_t *sd_open(const char *ifo, char *err, size_t err_len)
     size_t tail = d->off64 ? 12 : 8;
     uint32_t p = 0, n = 0;
     while (p < idxsize && n < d->count) {
+        checkin();
         const uint8_t *z = memchr(d->idx + p, 0, idxsize - p);
         if (!z || (size_t)(z - d->idx) + 1 + tail > idxsize) break;
         d->at[n++] = p;
@@ -413,6 +428,7 @@ sd_dict_t *sd_open(const char *ifo, char *err, size_t err_len)
         d->syn_at = d->syn ? malloc(d->nsyn * sizeof *d->syn_at) : NULL;
         uint32_t m = 0;
         for (size_t q = 0; d->syn_at && q < len && m < d->nsyn;) {
+            checkin();
             const uint8_t *z = memchr(d->syn + q, 0, len - q);
             if (!z || (size_t)(z - d->syn) + 5 > len) break;
             if (be32(z + 1) < d->count) d->syn_at[m++] = (uint32_t)q;
@@ -428,6 +444,7 @@ sd_dict_t *sd_open(const char *ifo, char *err, size_t err_len)
     bool sorted = true;
     while (i < d->count || j < d->nsyn) {
         uint32_t v;
+        checkin();
         if (j == d->nsyn) v = i++;
         else if (i == d->count) v = ROW_SYN | j++;
         else v = row_cmp(d, i, ROW_SYN | j) <= 0 ? i++ : (ROW_SYN | j++);
