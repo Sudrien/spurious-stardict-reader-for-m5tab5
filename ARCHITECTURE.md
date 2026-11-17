@@ -556,3 +556,29 @@ bootloader's ExternalProject call, and `CMAKE_POLICY_DEFAULT_CMP0168` set
 before project.cmake makes it NEW there. Then the change itself: every
 project configures with CMake 3.28 and 4.4 without warnings, and the
 firmware builds as before. *Not checked:* CMake 4.5; a board.
+
+### u-spurious-0006 -- the panel on core 0, the reader on core 1; the ELF beside the .bin
+
+Brings the standalone .bin to the shape Errant's and Lothesome's have.
+
+- **`standalone.c`** brings the panel, gfx and touch up itself, on core 0,
+  after storage and before the box, and runs the reader with
+  `feckless_umode_app_run_on(app, 1)` in place of `feckless_umode_app_run()`
+  on its own core. The panel's interrupts are then core 0's and no window
+  of the reader's holds them off (Lothesome's u-lothesome-0004); 0002's
+  check-ins stay, for a launcher that runs the reader on the panel's core.
+  The reader's own `lcd_init()`, `gfx_init()` and `touch_init()` find them
+  up and return ESP_OK. The box is now sized after the framebuffer is
+  taken, so the margin left for the firmware is 2 MB (was 1 MB, measured
+  before it), Avoidant's.
+- **`main/CMakeLists.txt`** copies the ELF from `build/elf/` to
+  `build/spurious_reader.app.elf`, beside `spurious.bin`, as Errant's does.
+
+*Checked:* a clean ESP-IDF 6.1.1 build, component manager off, against
+feckless-libs at cfa96c9: the ELF passes both checks (50 imports), the
+.bin links with no warnings and holds `feckless_umode_app_run_on`,
+`lcd_init` and `gfx_init`, and the copy is byte for byte the ELF. The
+.bin is 0x20b0b0 bytes, still over the 2 MB factory slot, as before this
+patch; it fits app2. *Not checked:* a board. What to look for:
+`standalone: the reader in a box of N KB` after the panel lights, and no
+blue screen during a long dictionary open.

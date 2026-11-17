@@ -18,6 +18,15 @@
  * PMP grants it and nothing else, every call outside it answered by
  * feckless_box_calls -- and not through feckless_abi_run(), which would
  * refuse it by the name feckless_abi_box_v1.
+ *
+ * u-spurious-0006: the panel, gfx and touch are brought up here too, on
+ * core 0, and the reader runs on core 1 (feckless_umode_app_run_on()), as
+ * Lothesome's and Errant's standalone .bins have it. The panel's
+ * interrupts -- its DMA restart, every frame -- are then core 0's, and no
+ * window of the reader's, on core 1, holds them off; u-spurious-0002's
+ * check-ins stay, for a launcher that runs the reader on the panel's core.
+ * The box is sized after the framebuffer is taken, so the margin is what
+ * is left for this firmware: 2 MB, Avoidant's.
  */
 #include <stdint.h>
 
@@ -27,10 +36,13 @@
 #include "feckless_box_calls.h"
 #include "feckless_umode_idf.h"
 #include "feckless_umode_load.h"
+#include "gfx.h"
+#include "lcd.h"
 #include "nvs_flash.h"
 #include "storage.h"
 #include "storage_io.h"
 #include "tab5io.h"
+#include "touch.h"
 #include "usbhost.h"
 
 extern const uint8_t elf_start[] asm("_binary_spurious_reader_app_elf_start");
@@ -62,12 +74,20 @@ void app_main(void)
     ESP_ERROR_CHECK(storage_init(&usb));
     usbhost_start();
 
-    /* The box: the largest PSRAM block less 1 MB for this firmware, at most
+    /* u-spurious-0006: the panel, on core 0, before the box is sized. */
+    esp_lcd_panel_handle_t panel = NULL;
+    if (lcd_init(&panel) != ESP_OK || gfx_init(panel, LCD_H_RES, LCD_V_RES) != ESP_OK) {
+        ESP_LOGE("standalone", "the panel did not come up");
+        return;
+    }
+    touch_init(tab5io_bus(), LCD_H_RES, LCD_V_RES);     /* the reader copes without */
+
+    /* The box: the largest PSRAM block less 2 MB for this firmware, at most
      * 24 MB; 64 KB of it the reader's stack. The stack guard's interrupt
      * out of every core's routing first, which a window needs. */
     feckless_umode_guard_unroute();
     size_t big = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
-    size_t box = big > (1u << 20) ? big - (1u << 20) : 0;
+    size_t box = big > (2u << 20) ? big - (2u << 20) : 0;
     if (box > (24u << 20)) box = 24u << 20;
     box &= ~(size_t)63;
     uint32_t n;
@@ -80,7 +100,7 @@ void app_main(void)
         return;
     }
     ESP_LOGI("standalone", "the reader in a box of %u KB", (unsigned)(box / 1024));
-    const feckless_umode_end_t end = feckless_umode_app_run(app);
+    const feckless_umode_end_t end = feckless_umode_app_run_on(app, 1);   /* u-spurious-0006 */
     ESP_LOGE("standalone", "the reader ended: reason %d, %s at 0x%08x", (int)end.reason,
              end.reason == FECKLESS_UMODE_END_FAULT ? feckless_umode_cause_name(end.mcause) : "-",
              (unsigned)end.pc);

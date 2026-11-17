@@ -26,6 +26,7 @@ idf_component_register(
     PRIV_REQUIRES feckless_abi feckless_abi_storage nvs_flash
                   feckless_drivers feckless_storage_handler
                   feckless_umode feckless_box_calls   # u-spurious-0001: the box
+                  feckless_graphics_handler   # u-spurious-0006: the panel first
 )
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
@@ -62,6 +63,12 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     # elf/ checked it against the ABI as it linked it; embedding waits
     # for that.
     add_dependencies(${COMPONENT_LIB} spurious_elf)
+
+    # u-spurious-0006: and a copy beside the .bin, build/spurious_reader.app.elf,
+    # the file a launcher is given, as Errant's build has it.
+    add_custom_command(TARGET spurious_elf POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_elf}" "${_build_dir}/spurious_reader.app.elf"
+        VERBATIM)
 
     # elf_loader's: 4-byte aligned, as esp_elf_relocate() wants it.
     elf_embed_aligned_binary(${COMPONENT_LIB} "${_elf}" BINARY)
