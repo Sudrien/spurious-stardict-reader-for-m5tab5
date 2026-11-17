@@ -83,3 +83,10 @@ dependencies:
     git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
     path: components/feckless_box_calls
     version: "umode"
+  # u-spurious-0003: feckless_box_calls requires it by name (a boxed app's
+  # NVS, u-feckless-0053), and a sibling required by name is fetched only
+  # if the app's manifest names it. The reader keeps nothing in NVS.
+  feckless_nvs_handler:
+    git: https://github.com/Sudrien/feckless-libs-for-m5tab5.git
+    path: components/feckless_nvs_handler
+    version: "umode"

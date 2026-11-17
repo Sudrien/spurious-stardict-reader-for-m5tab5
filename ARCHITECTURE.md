@@ -482,3 +482,23 @@ something the reader can rule out, so a sorted file is not assumed.
 `tools/sdorder.py <name>.ifo` applies the reader's order rules on a PC
 and prints the first pair that breaks them in the `.idx` or `.syn`. It
 is for finding out why a dictionary needed re-sorting.
+
+### u-spurious-0003 -- the manifest names feckless_nvs_handler
+
+feckless_box_calls requires `feckless_nvs_handler` by name since
+u-feckless-0053 (a boxed app's NVS), and a sibling required by name is
+fetched only if the app's manifest names it. The committed lock records
+feckless-libs at 3984162, before that, so the reader builds today; the
+next build that re-resolves the lock would stop at the configure with
+
+    Failed to resolve component 'feckless_nvs_handler' required by component
+    'feckless_box_calls': unknown name.
+
+as Errant's did (its u-errant-0006). `main/idf_component.yml` names it,
+on the `umode` branch with the rest. The reader keeps nothing in NVS.
+
+*Checked:* ESP-IDF 6.1.1, component manager off, given only the feckless
+components the manifest names, against feckless-libs' umode branch at
+cfa96c9: without the entry the error above; with it the ELF passes both
+checks and the .bin links. *Not checked:* a build with the component
+manager, which writes the lock; a board.
