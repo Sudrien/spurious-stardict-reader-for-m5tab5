@@ -1,5 +1,6 @@
 /*
- * Spurious -- a StarDict reader for the M5Stack Tab5.
+ * Spurious Dictionary Reader -- the M5Stack Tab5 firmware, for StarDict
+ * dictionaries.
  *
  * Finds dictionaries (.ifo with its .idx and .dict or .dict.dz) under
  * /dict on the microSD card or a USB drive, one level of folders deep,

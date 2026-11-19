@@ -117,7 +117,7 @@ jobs:
       # repository, not in the files: the .bins are byte for byte what
       # they were and flash as before. Every run attests, not only a
       # release, so a downloaded artifact can be checked too:
-      #   gh attestation verify <file> --repo Sudrien/spurious-stardict-reader-for-m5tab5
+      #   gh attestation verify <file> --repo Sudrien/spurious-dictionary-reader
       # A uses: step does not take the run steps' working-directory, so
       # the paths start at m5tab5/, as the archive step's do.
       - name: Attest build provenance

@@ -4,7 +4,8 @@ How to work on this repository. Read it before writing a patch.
 
 ## Project
 
-A StarDict dictionary reader for the M5Stack Tab5. See `README.md` for the
+Spurious Dictionary Reader: a dictionary reader, StarDict so far, for
+the M5Stack Tab5. See `README.md` for the
 plan. Built on the feckless libraries, pinned in `m5tab5/main/idf_component.yml`.
 
 ## Patches

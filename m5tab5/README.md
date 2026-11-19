@@ -1,6 +1,7 @@
 # Spurious -- the Tab5 firmware
 
-A StarDict dictionary reader for the M5Stack Tab5 (ESP32-P4).
+Spurious Dictionary Reader for the M5Stack Tab5 (ESP32-P4): it reads
+StarDict dictionaries.
 
 ## Using it
 

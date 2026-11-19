@@ -1,3 +1,5 @@
+# Spurious Dictionary Reader
+
 The plan: pyGlossary script to take the latest wikinary kiwix dump and convert it to stardict
 
 Use the feckless libraries

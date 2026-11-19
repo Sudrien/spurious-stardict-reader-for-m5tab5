@@ -67,5 +67,5 @@ feckless_abi_elf(spurious_reader)
 # named here: miniz 3.0.2's, MIT (components/tinfl). Writes
 # libversions.tsv beside the header, for the README or a release.
 idf_component_get_property(main_lib main COMPONENT_LIB)
-feckless_libversions(${main_lib} NAME "Spurious StarDict Reader" LICENSE MIT
+feckless_libversions(${main_lib} NAME "Spurious Dictionary Reader" LICENSE MIT
                      EXTRA "miniz tinfl (vendored)|3.0.2|MIT")

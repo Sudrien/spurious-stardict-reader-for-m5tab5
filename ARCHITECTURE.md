@@ -411,3 +411,13 @@
   end and Back, with 11 dictionaries, 21 libraries and a 30-sense
   definition; the frames were looked at. Not built with ESP-IDF, not on
   a Tab5.
+- **0027 Spurious Dictionary Reader.** The name, no longer StarDict's:
+  ZIM files read directly and boards other than the Tab5 (the Cardputer
+  Zero) are planned. README.md gains a title; CLAUDE.md, m5tab5/README.md,
+  main.c's header, feckless_libversions' NAME in elf/CMakeLists.txt (the
+  settings screen's library list shows it) and the attestation example in
+  the workflow, for a repository renamed `spurious-dictionary-reader`,
+  follow. Build targets and artifact names (`spurious`,
+  `spurious_reader`, `spurious_*_m5tab5.bin`) are unchanged, so flashers
+  and launchers are unaffected. Not built; text only, apart from the
+  NAME string.
